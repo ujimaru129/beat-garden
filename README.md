@@ -34,7 +34,7 @@ VS Code を使う場合は `.vscode/extensions.json` の推奨拡張（Rojo、lu
 placeファイルを書き出す（CI・Place Publishing API用）:
 
 ```bash
-rojo build -o build/BeatGarden.rbxl
+rojo build -o BeatGarden.rbxl
 ```
 
 整形とLint:
