@@ -123,6 +123,38 @@ flowchart LR
 - 素材は生成後にルック調整してから取り込む（ばらつき対策）
 - サムネイルとアイコンもマスターパレットから作る
 
+#### マスターパレット v1
+
+昼と夜で同じ5つの色相を共有し、明度と彩度だけを変える。昼夜の切替が「グレーディングの違い」として見えるようにするため。
+
+| 色相 | 昼（パステル） | 夜（ネオン） | 固定の役割 |
+| --- | --- | --- | --- |
+| Sakura | #F7C6D9 | #FF4FA3 | レーン1 |
+| Sora | #BFDDF5 | #3FC8FF | レーン2、Rare |
+| Matcha | #BFE3C0 | #3DFFB0 | レーン3、Uncommon |
+| Yuzu | #FBE7A1 | #FFE14D | レーン4、Legendary |
+| Fuji | #D8C8F0 | #A86BFF | Epic（夜版を使う） |
+
+| ベース・アクセント | 色 | 用途 |
+| --- | --- | --- |
+| Washi | #FFF8F0 | 昼の地、夜の文字 |
+| Sumi | #3B3346 | 昼の文字、植物の輪郭線 |
+| Yoru 夜空 | #14112B | 夜の空 |
+| Yoru 地面 | #231E45 | 夜の地面 |
+| Torii | #FF5A3C | 購入・決定ボタン（1画面に1つまで） |
+
+| 変異ルック | 基準色 |
+| --- | --- |
+| Film | #D9C7A7 |
+| Vapor | #FF71CE / #01CDFE |
+| Golden Hour | #FFB347 |
+| Neon | 夜パレットを流用 |
+| Aurora | Matcha → Sora → Fuji（夜版）の循環 |
+
+- 4レーンは色だけで区別しない。ノーツの形も変える（丸、三角、四角、ひし形）
+- 昼のWashiの上でパステルが沈む場合は、植物の輪郭にSumiの細い線を入れる
+- コード上の定義は [Palette.luau](../src/shared/Palette.luau)（ReplicatedStorage の ModuleScript）に一元化する
+
 ### Robloxでのルック再現
 
 - Robloxは任意のLUTを直接読み込めない前提で設計する（着手時に要確認）
