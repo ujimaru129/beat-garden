@@ -1,8 +1,11 @@
 --!strict
--- HUD (coins + Market button) and the Market modal: sell fruit, buy seeds.
--- Prototype stand-in for the shop NPC and the market NPC; the server decides every price and result.
+-- The coin counter and Shop button (HUD), the Shop screen (buy seeds and eggs) and the Market
+-- screen (sell fruit). The Shop opens from the HUD button or the Seed Shop NPC; the Market opens
+-- only from the Market NPC, and the server only lets you sell near it. The server decides every
+-- price and result.
 
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GardenState = require(script.Parent.GardenState)
@@ -10,6 +13,7 @@ local ListModal = require(script.Parent.ListModal)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
+local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Toast = require(script.Parent.Toast)
 local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
@@ -25,15 +29,39 @@ local function fruitLabel(seedId: string, mutation: string?): string
 	return if mutation then `{Mutations.displayName(mutation)} {name}` else name
 end
 
--- The actions come first (a landscape phone only shows about three rows without scrolling);
--- the details of what is in the bag come last. Coins are in the title.
-local function rowsFor(
+-- The actions come first (a landscape phone only shows about three rows without scrolling).
+local function shopRows(
 	snapshot: GardenState.Snapshot,
-	sellAll: () -> (),
-	buy: (seedId: string) -> ()
+	buy: (seedId: string) -> (),
+	buyEgg: () -> ()
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
+	for _, seed in Seeds.List do
+		local own = snapshot.seeds[seed.seedId] or 0
+		table.insert(rows, {
+			text = `Buy {seed.name.en}  {seed.price}   (you have {own})`,
+			color = if snapshot.coins >= seed.price then Palette.Hues.Matcha.Night else Palette.Rarity.Common,
+			onTap = function()
+				buy(seed.seedId)
+			end,
+		})
+	end
+	table.insert(rows, {
+		text = `Buy Spirit Egg  {Spirits.EggPrice}   (you have {snapshot.eggs})`,
+		color = if snapshot.coins >= Spirits.EggPrice then Palette.Hues.Fuji.Night else Palette.Rarity.Common,
+		onTap = buyEgg,
+	})
+	-- Paid random items must show their odds.
+	local odds: { string } = {}
+	for _, o in Spirits.odds() do
+		table.insert(odds, `{(Spirits.get(o.kind) :: Spirits.Def).name.en} {o.percent}%`)
+	end
+	table.insert(rows, { text = `Egg hatches into: {table.concat(odds, ", ")}` })
+	return rows
+end
 
+local function sellRows(snapshot: GardenState.Snapshot, sellAll: () -> ()): { ListModal.Row }
+	local rows: { ListModal.Row } = {}
 	local total = 0
 	local groups: { [string]: { label: string, count: number, value: number } } = {}
 	local order: { string } = {}
@@ -49,7 +77,6 @@ local function rowsFor(
 		group.count += 1
 		group.value += fruit.value
 	end
-
 	if #snapshot.fruits == 0 then
 		table.insert(rows, { text = "No fruit to sell yet" })
 	else
@@ -59,59 +86,83 @@ local function rowsFor(
 			onTap = sellAll,
 		})
 	end
-
-	for _, seed in Seeds.List do
-		local own = snapshot.seeds[seed.seedId] or 0
-		local affordable = snapshot.coins >= seed.price
-		table.insert(rows, {
-			text = `Buy {seed.name.en}  {seed.price}   (you have {own})`,
-			color = if affordable then Palette.Hues.Matcha.Night else Palette.Rarity.Common,
-			onTap = function()
-				buy(seed.seedId)
-			end,
-		})
-	end
-
 	for _, key in order do
 		local group = groups[key]
-		table.insert(rows, { text = `In your bag: {group.label} x{group.count}  ({group.value})` })
+		table.insert(rows, { text = `{group.label} x{group.count}  ({group.value})` })
 	end
 	return rows
 end
 
+local function makeHudButton(gui: ScreenGui, text: string, y: number): TextButton
+	local button = Instance.new("TextButton")
+	button.Position = UDim2.fromOffset(16, y)
+	button.Size = UDim2.fromOffset(120, 48)
+	button.BackgroundColor3 = Palette.Base.Sumi
+	button.TextColor3 = Palette.Base.Washi
+	button.TextScaled = true
+	button.Font = Enum.Font.GothamBold
+	button.Text = text
+	button.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = button
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0.2, 0)
+	padding.PaddingBottom = UDim.new(0.2, 0)
+	padding.Parent = button
+	return button
+end
+
+MarketUI.makeHudButton = makeHudButton
+
 function MarketUI.start()
 	local player = Players.LocalPlayer :: Player
 
+	local function reportResult(result: any, success: string)
+		Toast.show(if result.ok then success else (result.reason or "that did not work"))
+	end
+
 	local function sellAll()
 		local result = GardenState.call("sellAll")
-		if result.ok then
-			Toast.show(`Sold {result.count} fruit for {result.total} coins!`)
-		else
-			Toast.show(result.reason or "could not sell")
-		end
+		reportResult(result, `Sold {result.count} fruit for {result.total} coins!`)
 	end
-
 	local function buy(seedId: string)
 		local result = GardenState.call("buy", seedId)
-		if result.ok then
-			Toast.show(`Bought {seedName(seedId)} for {result.price}`)
-		else
-			Toast.show(result.reason or "could not buy")
-		end
+		reportResult(result, `Bought {seedName(seedId)} for {result.price}`)
+	end
+	local function buyEgg()
+		local result = GardenState.call("buyEgg")
+		reportResult(result, `Bought a Spirit Egg for {result.price}. Hatch it in Spirits`)
 	end
 
-	local modal = ListModal.create("Market")
-	local function rebuild(snapshot: GardenState.Snapshot)
-		modal.setTitle(`Market   {snapshot.coins} coins`)
-		modal.setRows(rowsFor(snapshot, sellAll, buy))
+	-- The world prompts sit over the modals, so they are off while a modal is open.
+	local function onClose()
+		ProximityPromptService.Enabled = true
 	end
-	GardenState.onChanged(function(snapshot)
-		if modal.isOpen() then
-			rebuild(snapshot)
-		end
-	end)
+	local shop = ListModal.create("Shop", onClose)
+	local market = ListModal.create("Market", onClose)
 
-	-- HUD: coins and the Market button, stacked under the Calibrate button.
+	local function rebuildShop(snapshot: GardenState.Snapshot)
+		shop.setTitle(`Shop   {snapshot.coins} coins`)
+		shop.setRows(shopRows(snapshot, buy, buyEgg))
+	end
+	local function rebuildMarket(snapshot: GardenState.Snapshot)
+		market.setTitle(`Market   {snapshot.coins} coins`)
+		market.setRows(sellRows(snapshot, sellAll))
+	end
+
+	local function open(modal: ListModal.Modal, rebuild: (GardenState.Snapshot) -> ())
+		local snapshot = GardenState.get()
+		if not snapshot then
+			Toast.show("Still loading...")
+			return
+		end
+		rebuild(snapshot)
+		ProximityPromptService.Enabled = false
+		modal.open()
+	end
+
+	-- HUD: coins and the Shop button, stacked under the Calibrate button.
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "GardenHud"
 	gui.ResetOnSpawn = false
@@ -135,30 +186,21 @@ function MarketUI.start()
 	coinsPadding.PaddingBottom = UDim.new(0.15, 0)
 	coinsPadding.Parent = coins
 
-	local market = Instance.new("TextButton")
-	market.Position = UDim2.fromOffset(16, 116)
-	market.Size = UDim2.fromOffset(120, 48)
-	market.BackgroundColor3 = Palette.Base.Sumi
-	market.TextColor3 = Palette.Base.Washi
-	market.TextScaled = true
-	market.Font = Enum.Font.GothamBold
-	market.Text = "Market"
-	market.Parent = gui
-	local marketCorner = Instance.new("UICorner")
-	marketCorner.CornerRadius = UDim.new(0, 12)
-	marketCorner.Parent = market
-	local marketPadding = Instance.new("UIPadding")
-	marketPadding.PaddingTop = UDim.new(0.2, 0)
-	marketPadding.PaddingBottom = UDim.new(0.2, 0)
-	marketPadding.Parent = market
-
+	local shopButton = makeHudButton(gui, "Shop", 116)
 	gui.Parent = player:WaitForChild("PlayerGui")
 
-	-- The tutorial steps that need the Market light up its button (the one accent colour on screen).
+	-- The tutorial step that asks for a purchase lights up the Shop button (the one accent colour).
 	local function render(snapshot: GardenState.Snapshot)
 		coins.Text = `Coins: {snapshot.coins}`
-		local needed = snapshot.tutorialStep == Tutorial.Steps.Sell or snapshot.tutorialStep == Tutorial.Steps.Buy
-		market.BackgroundColor3 = if needed then Palette.Base.Torii else Palette.Base.Sumi
+		shopButton.BackgroundColor3 = if snapshot.tutorialStep == Tutorial.Steps.Buy
+			then Palette.Base.Torii
+			else Palette.Base.Sumi
+		if shop.isOpen() then
+			rebuildShop(snapshot)
+		end
+		if market.isOpen() then
+			rebuildMarket(snapshot)
+		end
 	end
 	GardenState.onChanged(render)
 	local first = GardenState.get()
@@ -166,14 +208,16 @@ function MarketUI.start()
 		render(first)
 	end
 
-	market.Activated:Connect(function()
-		local snapshot = GardenState.get()
-		if not snapshot then
-			Toast.show("Still loading...")
-			return
+	shopButton.Activated:Connect(function()
+		open(shop, rebuildShop)
+	end)
+
+	ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt)
+		if prompt.Name == "ShopPrompt" then
+			open(shop, rebuildShop)
+		elseif prompt.Name == "MarketPrompt" then
+			open(market, rebuildMarket)
 		end
-		rebuild(snapshot)
-		modal.open()
 	end)
 end
 

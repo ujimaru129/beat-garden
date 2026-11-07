@@ -5,6 +5,7 @@
 
 local Growth = require(script.Parent.Parent.Garden.Growth)
 local Seeds = require(script.Parent.Parent.Garden.Seeds)
+local Spirits = require(script.Parent.Parent.Garden.Spirits)
 local Tutorial = require(script.Parent.Parent.Garden.Tutorial)
 
 export type Fruit = {
@@ -13,12 +14,20 @@ export type Fruit = {
 	weight: number,
 }
 
+export type SpiritInstance = {
+	id: string, -- unique per spirit
+	kind: string, -- Spirits kind
+}
+
 export type Data = {
 	v: number,
 	coins: number,
 	plots: { [string]: Growth.Plot }, -- keyed "1", "2", ... (one plot for now)
 	seeds: { [string]: number }, -- seedId -> count
 	fruits: { Fruit },
+	eggs: number,
+	spirits: { SpiritInstance },
+	equippedSpirit: string?, -- id of the equipped spirit
 	settings: { latencyMs: number },
 	stats: { tends: number, perfects: number, harvests: number },
 	tutorialStep: number, -- 1..5 = in the tutorial, Tutorial.Done = finished or skipped
@@ -44,6 +53,9 @@ function PlayerData.new(): Data
 		plots = {},
 		seeds = { [Seeds.StarterSeedId] = 1 },
 		fruits = {},
+		eggs = 0,
+		spirits = {},
+		equippedSpirit = nil,
 		settings = { latencyMs = 0 },
 		stats = { tends = 0, perfects = 0, harvests = 0 },
 		tutorialStep = 1,
@@ -108,6 +120,29 @@ function PlayerData.sanitize(raw: any): Data
 					weight = num(fruit.weight, 1, 0.1, 10),
 				})
 			end
+		end
+	end
+
+	data.eggs = math.floor(num(raw.eggs, 0, 0, 999))
+
+	if type(raw.spirits) == "table" then
+		data.spirits = {}
+		local seen: { [string]: boolean } = {}
+		for _, spirit in raw.spirits do
+			if
+				#data.spirits < Spirits.MaxOwned
+				and type(spirit) == "table"
+				and type(spirit.id) == "string"
+				and not seen[spirit.id]
+				and type(spirit.kind) == "string"
+				and Spirits.get(spirit.kind)
+			then
+				seen[spirit.id] = true
+				table.insert(data.spirits, { id = spirit.id, kind = spirit.kind })
+			end
+		end
+		if type(raw.equippedSpirit) == "string" and seen[raw.equippedSpirit] then
+			data.equippedSpirit = raw.equippedSpirit
 		end
 	end
 

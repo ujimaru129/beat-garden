@@ -7,9 +7,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local Atmosphere = require(script.Atmosphere)
 local Calibrator = require(script.Calibrator)
 local GardenState = require(script.GardenState)
 local MarketUI = require(script.MarketUI)
+local PlotVisuals = require(script.PlotVisuals)
+local PromptFilter = require(script.PromptFilter)
+local SpiritUI = require(script.SpiritUI)
+local TradeUI = require(script.TradeUI)
 local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local RhythmRunner = require(script.RhythmRunner)
@@ -20,7 +25,12 @@ local player = Players.LocalPlayer :: Player
 
 -- Garden data from the server, then the screens that use it.
 GardenState.start()
+Atmosphere.start()
+PlotVisuals.start()
+PromptFilter.start()
 MarketUI.start()
+SpiritUI.start()
+TradeUI.start()
 TutorialUI.start()
 
 -- The plant prompt (tap, or E on keyboard): plant a seed, Tend it, or harvest it.
@@ -90,7 +100,7 @@ if RunService:IsStudio() then
 			)
 		end)
 	end)
-	print("[BeatGarden] dev shortcuts: 1 / 2 / 3 try a chart, 0 resets your data (replays the tutorial)")
+	print("[BeatGarden] dev shortcuts: 1 / 2 / 3 try a chart, 0 resets your data, N flips day / night")
 end
 
 print("[BeatGarden] client started")

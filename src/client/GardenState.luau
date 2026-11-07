@@ -18,6 +18,9 @@ export type Snapshot = {
 	settings: { latencyMs: number },
 	persistent: boolean,
 	tutorialStep: number,
+	eggs: number,
+	spirits: { { id: string, kind: string } },
+	equippedSpirit: string?,
 }
 
 local current: Snapshot? = nil

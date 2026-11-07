@@ -7,6 +7,7 @@
 --   Garden  "state" | "plant", seedId | "harvest" | "buy", seedId | "sellAll" | "setLatency", ms
 -- After every change the server pushes a snapshot to that player with the GardenUpdate event.
 
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -16,11 +17,14 @@ local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
 local Economy = require(ReplicatedStorage.Shared.Garden.Economy)
 local Growth = require(ReplicatedStorage.Shared.Garden.Growth)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
+local Npcs = require(script.Parent.Npcs)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local PlayerData = require(ReplicatedStorage.Shared.Data.PlayerData)
 local PlayerStore = require(script.Parent.PlayerStore)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
+local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
+local Trading = require(script.Parent.Trading)
 local TestCharts = require(ReplicatedStorage.Shared.Dev.TestCharts)
 local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
@@ -56,6 +60,7 @@ type Session = {
 	plant: Part,
 	prompt: ProximityPrompt,
 	pending: Pending?,
+	nextAutoCare: number, -- unix seconds: when the equipped spirit tends next
 }
 
 local sessions: { [Player]: Session } = {}
@@ -75,6 +80,19 @@ end
 
 local function fractionOf(plot: Growth.Plot, now: number): number
 	return Growth.fraction(plot, seedOf(plot).growSeconds, now)
+end
+
+local function equippedSpiritDef(s: Session): Spirits.Def?
+	local d = data(s)
+	if not d.equippedSpirit then
+		return nil
+	end
+	for _, spirit in d.spirits do
+		if spirit.id == d.equippedSpirit then
+			return Spirits.get(spirit.kind)
+		end
+	end
+	return nil
 end
 
 local function advanceTutorial(s: Session, event: Tutorial.Event)
@@ -109,6 +127,9 @@ local function snapshot(s: Session): any
 		settings = { latencyMs = d.settings.latencyMs },
 		persistent = s.store.persistent,
 		tutorialStep = d.tutorialStep,
+		eggs = d.eggs,
+		spirits = table.clone(d.spirits),
+		equippedSpirit = d.equippedSpirit,
 	}
 end
 
@@ -118,6 +139,8 @@ end
 
 -- Redraws the plant and the prompt from the data.
 local function refresh(s: Session)
+	local spiritDef = equippedSpiritDef(s)
+	s.soil:SetAttribute("SpiritKind", if spiritDef then spiritDef.kind else nil)
 	local plot = plotOf(s)
 	if not plot then
 		s.plant.Transparency = 1
@@ -337,7 +360,9 @@ local function harvest(s: Session): any
 		return fail("your bag is full - sell some fruit")
 	end
 
-	local mutation = Mutations.roll(plot.bestPerfectStreak, plot.mutationMult, math.random)
+	local spiritDef = equippedSpiritDef(s)
+	local chanceMult = plot.mutationMult * (if spiritDef then spiritDef.mutationMult else 1)
+	local mutation = Mutations.roll(plot.bestPerfectStreak, chanceMult, math.random)
 	local weight = Economy.rollWeight(math.random)
 	table.insert(d.fruits, { seedId = plot.seedId, mutation = mutation, weight = weight })
 	d.stats.harvests += 1
@@ -368,6 +393,9 @@ local function buy(s: Session, payload: unknown): any
 end
 
 local function sellAll(s: Session): any
+	if Npcs.distanceTo(s.player, "market") > Npcs.SellRange then
+		return fail("walk to the Market to sell")
+	end
 	local d = data(s)
 	if #d.fruits == 0 then
 		return fail("no fruit to sell")
@@ -393,6 +421,73 @@ local function setLatency(s: Session, payload: unknown): any
 	return { ok = true }
 end
 
+local function buyEgg(s: Session): any
+	local d = data(s)
+	if d.coins < Spirits.EggPrice then
+		return fail("not enough coins")
+	end
+	d.coins -= Spirits.EggPrice
+	d.eggs += 1
+	push(s)
+	return { ok = true, price = Spirits.EggPrice }
+end
+
+local function hatch(s: Session): any
+	local d = data(s)
+	if d.eggs < 1 then
+		return fail("you have no egg")
+	end
+	if #d.spirits >= Spirits.MaxOwned then
+		return fail("too many spirits")
+	end
+	d.eggs -= 1
+	local kind = Spirits.hatch(math.random)
+	local id = HttpService:GenerateGUID(false)
+	table.insert(d.spirits, { id = id, kind = kind })
+	push(s)
+	print(`[Garden] {s.player.Name}: hatched {kind}`)
+	return { ok = true, kind = kind, id = id }
+end
+
+-- Equips the spirit with this id, or unequips when `payload` is nil / the one already equipped.
+local function equip(s: Session, payload: unknown): any
+	local d = data(s)
+	if payload == nil or payload == d.equippedSpirit then
+		d.equippedSpirit = nil
+	else
+		local found = false
+		for _, spirit in d.spirits do
+			if spirit.id == payload then
+				found = true
+			end
+		end
+		if not found then
+			return fail("unknown spirit")
+		end
+		d.equippedSpirit = payload :: string
+		s.nextAutoCare = os.time() + 5 -- first tend shortly after equipping
+	end
+	refresh(s)
+	push(s)
+	return { ok = true }
+end
+
+-- Called every second: an equipped spirit tends a growing plant on its own timer.
+local function autoCare(s: Session, now: number)
+	local def = equippedSpiritDef(s)
+	local plot = plotOf(s)
+	if not def or not plot or now < s.nextAutoCare then
+		return
+	end
+	s.nextAutoCare = now + def.autoCareSeconds
+	if Growth.stageFor(fractionOf(plot, now)) == "Fruit" then
+		return
+	end
+	plot.careGauge += def.autoCarePoints
+	refresh(s)
+	push(s)
+end
+
 local function skipTutorial(s: Session): any
 	data(s).tutorialStep = Tutorial.Done
 	push(s)
@@ -409,6 +504,17 @@ local function devReset(s: Session): any
 	refresh(s)
 	push(s)
 	print(`[Garden] {s.player.Name}: data reset (Studio)`)
+	return { ok = true }
+end
+
+-- Studio only: gives coins so the shop, eggs and trading can be tried without waiting.
+local function devGrant(s: Session, payload: unknown): any
+	if not RunService:IsStudio() then
+		return fail("not available")
+	end
+	local amount = if type(payload) == "number" then math.clamp(payload, 0, 100000) else 500
+	data(s).coins += math.floor(amount)
+	push(s)
 	return { ok = true }
 end
 
@@ -432,6 +538,7 @@ local function createSession(player: Player, container: Instance): Session?
 		plant = plantPart,
 		prompt = prompt,
 		pending = nil,
+		nextAutoCare = 0,
 	}
 	sessions[player] = s
 	refresh(s)
@@ -446,6 +553,25 @@ function Garden.start()
 	local container = Instance.new("Folder")
 	container.Name = "Garden"
 	container.Parent = Workspace
+
+	Npcs.start(container)
+
+	Trading.start({
+		dataOf = function(player: Player): PlayerData.Data?
+			local s = sessions[player]
+			return if s then data(s) else nil
+		end,
+		persistent = function(player: Player): boolean
+			local s = sessions[player]
+			return s ~= nil and s.store.persistent
+		end,
+		push = function(player: Player)
+			local s = sessions[player]
+			if s then
+				push(s)
+			end
+		end,
+	})
 
 	updateEvent = Instance.new("RemoteEvent")
 	updateEvent.Name = "GardenUpdate"
@@ -487,10 +613,18 @@ function Garden.start()
 			return sellAll(s)
 		elseif action == "setLatency" then
 			return setLatency(s, payload)
+		elseif action == "buyEgg" then
+			return buyEgg(s)
+		elseif action == "hatch" then
+			return hatch(s)
+		elseif action == "equip" then
+			return equip(s, payload)
 		elseif action == "skipTutorial" then
 			return skipTutorial(s)
 		elseif action == "devReset" then
 			return devReset(s)
+		elseif action == "devGrant" then
+			return devGrant(s, payload)
 		end
 		return nil
 	end
@@ -537,8 +671,10 @@ function Garden.start()
 		while true do
 			task.wait(1)
 			sinceSave += 1
+			local now = os.time()
 			for _, s in sessions do
 				refresh(s)
+				autoCare(s, now)
 			end
 			if sinceSave >= AUTOSAVE_SECONDS then
 				sinceSave = 0

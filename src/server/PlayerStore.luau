@@ -134,4 +134,15 @@ function PlayerStore.save(session: Session, release: boolean): boolean
 	return true
 end
 
+-- Trade history for investigating scams (spec: Trades_Log, keyed by trade id). Failure to write is
+-- only a warning: a log problem must never block or undo a trade.
+function PlayerStore.logTrade(tradeId: string, entry: any)
+	local ok, err = pcall(function()
+		DataStoreService:GetDataStore("Trades_Log"):SetAsync(tradeId, entry)
+	end)
+	if not ok then
+		warn("[PlayerStore] trade log failed:", err)
+	end
+end
+
 return PlayerStore

@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DifficultyPicker = require(script.Parent.DifficultyPicker)
 local GardenState = require(script.Parent.GardenState)
+local HarvestFx = require(script.Parent.HarvestFx)
 local ListModal = require(script.Parent.ListModal)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local RhythmRunner = require(script.Parent.RhythmRunner)
@@ -118,7 +119,7 @@ function TendFlow.start()
 	end
 
 	-- Harvest -------------------------------------------------------------------------------
-	local function harvest()
+	local function harvest(plot: Instance)
 		local result = GardenState.call("harvest")
 		if not result.ok then
 			Toast.show(result.reason or "could not harvest")
@@ -129,6 +130,9 @@ function TendFlow.start()
 			then `{Mutations.displayName(mutation)} {seedName(result.seedId)}`
 			else seedName(result.seedId)
 		Toast.show(`Harvested {name}!  worth {result.value}`)
+		if plot:IsA("BasePart") then
+			HarvestFx.play(plot.Position, mutation)
+		end
 	end
 
 	-- The prompt --------------------------------------------------------------------------
@@ -145,7 +149,7 @@ function TendFlow.start()
 		if stage == "Empty" then
 			openSeedPicker()
 		elseif stage == "Fruit" then
-			harvest()
+			harvest(plot)
 		else
 			picking = true
 			setPromptsEnabled(false)
