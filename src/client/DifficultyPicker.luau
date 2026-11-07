@@ -31,7 +31,8 @@ local function make(className: string, props: { [string]: any }, parent: Instanc
 end
 
 -- `onPick` is called with "Easy" / "Normal" / "Hard" when a button is tapped or clicked.
-function DifficultyPicker.create(onPick: (name: string) -> ()): Picker
+-- With `onCancel`, a small Cancel button is shown above the row.
+function DifficultyPicker.create(onPick: (name: string) -> (), onCancel: (() -> ())?): Picker
 	local gui = make("ScreenGui", {
 		Name = "DifficultyPicker",
 		ResetOnSpawn = false,
@@ -75,6 +76,23 @@ function DifficultyPicker.create(onPick: (name: string) -> ()): Picker
 		button.Activated:Connect(function()
 			onPick(name)
 		end)
+	end
+
+	if onCancel then
+		local cancel = make("TextButton", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 0.78, -10),
+			Size = UDim2.fromOffset(120, 44),
+			BackgroundColor3 = Palette.Base.Sumi,
+			BackgroundTransparency = 0.1,
+			Text = "Cancel",
+			TextColor3 = Palette.Base.Washi,
+			TextScaled = true,
+			Font = Enum.Font.GothamBold,
+		}, gui) :: TextButton
+		make("UICorner", { CornerRadius = UDim.new(0, 12) }, cancel)
+		make("UIPadding", { PaddingTop = UDim.new(0.2, 0), PaddingBottom = UDim.new(0.2, 0) }, cancel)
+		cancel.Activated:Connect(onCancel)
 	end
 
 	gui.Parent = (Players.LocalPlayer :: Player):WaitForChild("PlayerGui")

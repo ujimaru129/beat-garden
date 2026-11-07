@@ -20,4 +20,12 @@ Difficulty.ScrollMs = table.freeze({
 	Hard = 1100,
 }) :: { [Name]: number }
 
+-- Reward: growth points earned by a tend are multiplied by this (initial values, tune later).
+-- Easy still grows the plant; Hard is for players who want to grow faster.
+Difficulty.GrowthMultiplier = table.freeze({
+	Easy = 1,
+	Normal = 1.25,
+	Hard = 1.5,
+}) :: { [Name]: number }
+
 return table.freeze(Difficulty)
