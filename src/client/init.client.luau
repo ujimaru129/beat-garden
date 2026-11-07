@@ -8,6 +8,8 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Calibrator = require(script.Calibrator)
+local GardenState = require(script.GardenState)
+local MarketUI = require(script.MarketUI)
 local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local RhythmRunner = require(script.RhythmRunner)
@@ -15,12 +17,17 @@ local TendFlow = require(script.TendFlow)
 
 local player = Players.LocalPlayer :: Player
 
--- Tend: walk up to your plant and tap its prompt (E on keyboard) to pick a difficulty and play.
+-- Garden data from the server, then the screens that use it.
+GardenState.start()
+MarketUI.start()
+
+-- The plant prompt (tap, or E on keyboard): plant a seed, Tend it, or harvest it.
 TendFlow.start()
 
 -- Calibration: a button at the top left opens the tap-along screen.
 local calibrator = Calibrator.create(function(latencyMs)
 	print(`[BeatGarden] latency calibrated: {latencyMs} ms`)
+	GardenState.call("setLatency", latencyMs) -- saved with the player data
 end)
 local calGui = Instance.new("ScreenGui")
 calGui.Name = "CalibrateButton"

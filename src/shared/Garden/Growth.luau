@@ -14,6 +14,8 @@ export type Plot = {
 	plantedAt: number, -- unix seconds
 	careGauge: number, -- growth seconds earned from tending
 	lastTendAt: number, -- unix seconds, 0 = never tended
+	bestPerfectStreak: number, -- longest Perfect streak over all tends (feeds the mutation roll)
+	mutationMult: number, -- best Difficulty.MutationChanceMultiplier used while tending
 }
 
 local Growth = {}
@@ -33,6 +35,18 @@ Growth.MaxTendPoints = 60
 
 -- The same plant cannot be tended again for this long.
 Growth.TendCooldownSeconds = 60
+
+function Growth.newPlot(seedId: string, now: number): Plot
+	return { seedId = seedId, plantedAt = now, careGauge = 0, lastTendAt = 0, bestPerfectStreak = 0, mutationMult = 1 }
+end
+
+-- Applies one validated tend to the plot.
+function Growth.applyTend(plot: Plot, points: number, perfectStreak: number, mutationMult: number, now: number)
+	plot.careGauge += points
+	plot.lastTendAt = now
+	plot.bestPerfectStreak = math.max(plot.bestPerfectStreak, perfectStreak)
+	plot.mutationMult = math.max(plot.mutationMult, mutationMult)
+end
 
 -- Growth seconds so far (time + care), capped at growSeconds.
 function Growth.progressSeconds(plot: Plot, growSeconds: number, now: number): number

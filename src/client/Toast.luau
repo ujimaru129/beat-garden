@@ -1,0 +1,69 @@
+--!strict
+-- One short message near the top of the screen (a new message replaces the old one).
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Palette = require(ReplicatedStorage.Shared.Palette)
+
+local Toast = {}
+
+local SECONDS = 6
+
+local label: TextLabel? = nil
+local token = 0
+
+local function ensure(): TextLabel
+	if label then
+		return label
+	end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "Toast"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 90
+
+	local l = Instance.new("TextLabel")
+	l.AnchorPoint = Vector2.new(0.5, 0.5)
+	-- Above the modals (they start lower) and clear of the Roblox menu buttons at the top left.
+	l.Position = UDim2.fromScale(0.5, 0.14)
+	l.Size = UDim2.fromScale(0.5, 0.16)
+	l.BackgroundColor3 = Palette.Base.YoruSky
+	l.BackgroundTransparency = 0.2
+	l.TextColor3 = Palette.Base.Washi
+	l.TextScaled = true
+	l.Font = Enum.Font.GothamBold
+	l.Visible = false
+	l.Parent = gui
+	local size = Instance.new("UISizeConstraint")
+	size.MaxSize = Vector2.new(640, 90)
+	size.MinSize = Vector2.new(0, 56)
+	size.Parent = l
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = l
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0.15, 0)
+	padding.PaddingBottom = UDim.new(0.15, 0)
+	padding.PaddingLeft = UDim.new(0.04, 0)
+	padding.PaddingRight = UDim.new(0.04, 0)
+	padding.Parent = l
+	gui.Parent = (Players.LocalPlayer :: Player):WaitForChild("PlayerGui")
+	label = l
+	return l
+end
+
+function Toast.show(text: string)
+	local l = ensure()
+	token += 1
+	local mine = token
+	l.Text = text
+	l.Visible = true
+	task.delay(SECONDS, function()
+		if token == mine then
+			l.Visible = false
+		end
+	end)
+end
+
+return Toast

@@ -1,11 +1,11 @@
 --!strict
--- Garden: one plot per player (prototype) with a plant that grows from time and from tending.
+-- Garden: one plot per player with a plant that grows from time and from tending, plus the
+-- economy around it (plant, harvest with a mutation roll, buy seeds, sell fruit) and saving.
 --
--- Tend flow (server side of the "Tend" RemoteFunction):
---   "begin", difficulty  -> checks range / cooldown, hands out a chart, starts the server clock
---   "submit", summary    -> validates the run, turns accuracy into growth points, updates the plant
--- The client shows the difficulty picker and plays the chart; the server decides every number.
--- State is in memory only for now (saving comes with the player data work).
+-- Remotes (both RemoteFunctions, every answer is { ok, ... } and the server decides every number):
+--   Tend    "begin", difficulty | "submit", summary      -- the rhythm run
+--   Garden  "state" | "plant", seedId | "harvest" | "buy", seedId | "sellAll" | "setLatency", ms
+-- After every change the server pushes a snapshot to that player with the GardenUpdate event.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,18 +13,23 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
+local Economy = require(ReplicatedStorage.Shared.Garden.Economy)
 local Growth = require(ReplicatedStorage.Shared.Garden.Growth)
+local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
+local PlayerData = require(ReplicatedStorage.Shared.Data.PlayerData)
+local PlayerStore = require(script.Parent.PlayerStore)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
+local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local TestCharts = require(ReplicatedStorage.Shared.Dev.TestCharts)
 
 local Garden = {}
 
--- Prototype seed; the real ones come from Master_Seeds.
-local TEST_SEED = { seedId = "seed_test", growSeconds = 180 }
+local PLOT_KEY = "1" -- one plot for now (Extra Plot adds more keys)
 local PLOT_SPACING = 14 -- studs between neighbouring plots
 local PLOT_DISTANCE = 10 -- studs from the spawn
 local TEND_RANGE = 24 -- the prompt works within ~12 studs; the server allows some lag on top
+local AUTOSAVE_SECONDS = 60
 
 -- Short cooldown in Studio so it can be tried repeatedly.
 local COOLDOWN_SECONDS = if RunService:IsStudio() then 10 else Growth.TendCooldownSeconds
@@ -39,15 +44,89 @@ local STAGE_LOOK: { [string]: { size: number, color: Color3 } } = {
 
 type Pending = { segment: RhythmEngine.Segment, startedAt: number, difficulty: Difficulty.Name }
 
-type PlotState = {
+type Session = {
+	player: Player,
 	slot: number,
-	plot: Growth.Plot,
+	store: PlayerStore.Session,
 	soil: Part,
 	plant: Part,
+	prompt: ProximityPrompt,
 	pending: Pending?,
 }
 
-local plots: { [Player]: PlotState } = {}
+local sessions: { [Player]: Session } = {}
+local updateEvent: RemoteEvent
+
+local function data(s: Session): PlayerData.Data
+	return s.store.data
+end
+
+local function plotOf(s: Session): Growth.Plot?
+	return data(s).plots[PLOT_KEY]
+end
+
+local function seedOf(plot: Growth.Plot): Seeds.Seed
+	return Seeds.get(plot.seedId) :: Seeds.Seed -- sanitize() guarantees the seed exists
+end
+
+local function fractionOf(plot: Growth.Plot, now: number): number
+	return Growth.fraction(plot, seedOf(plot).growSeconds, now)
+end
+
+-- What the owner's client needs to draw the HUD and the market.
+local function snapshot(s: Session): any
+	local d = data(s)
+	local now = os.time()
+	local fruits = {}
+	for _, fruit in d.fruits do
+		table.insert(fruits, {
+			seedId = fruit.seedId,
+			mutation = fruit.mutation,
+			weight = fruit.weight,
+			value = Economy.fruitValue(fruit.seedId, fruit.mutation, fruit.weight),
+		})
+	end
+	local plotInfo = nil
+	local plot = plotOf(s)
+	if plot then
+		local fraction = fractionOf(plot, now)
+		plotInfo = { seedId = plot.seedId, fraction = fraction, stage = Growth.stageFor(fraction) }
+	end
+	return {
+		coins = d.coins,
+		seeds = table.clone(d.seeds),
+		fruits = fruits,
+		plot = plotInfo,
+		settings = { latencyMs = d.settings.latencyMs },
+		persistent = s.store.persistent,
+	}
+end
+
+local function push(s: Session)
+	updateEvent:FireClient(s.player, snapshot(s))
+end
+
+-- Redraws the plant and the prompt from the data.
+local function refresh(s: Session)
+	local plot = plotOf(s)
+	if not plot then
+		s.plant.Transparency = 1
+		s.soil:SetAttribute("Stage", "Empty")
+		s.soil:SetAttribute("Fraction", 0)
+		s.prompt.ActionText = "Plant"
+		return
+	end
+	local fraction = fractionOf(plot, os.time())
+	local stage = Growth.stageFor(fraction)
+	local look = STAGE_LOOK[stage]
+	s.plant.Transparency = 0
+	s.plant.Size = Vector3.new(look.size, look.size, look.size)
+	s.plant.Color = look.color
+	s.plant.Position = s.soil.Position + Vector3.new(0, s.soil.Size.Y / 2 + look.size / 2, 0)
+	s.soil:SetAttribute("Stage", stage)
+	s.soil:SetAttribute("Fraction", fraction)
+	s.prompt.ActionText = if stage == "Fruit" then "Harvest" else "Tend"
+end
 
 local function spawnPosition(): Vector3
 	local spawn = Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
@@ -61,8 +140,8 @@ end
 
 local function freeSlot(): number
 	local used: { [number]: boolean } = {}
-	for _, state in plots do
-		used[state.slot] = true
+	for _, s in sessions do
+		used[s.slot] = true
 	end
 	local slot = 1
 	while used[slot] do
@@ -71,20 +150,7 @@ local function freeSlot(): number
 	return slot
 end
 
-local function refresh(state: PlotState)
-	local now = os.time()
-	local fraction = Growth.fraction(state.plot, TEST_SEED.growSeconds, now)
-	local stage = Growth.stageFor(fraction)
-	local look = STAGE_LOOK[stage]
-	state.plant.Size = Vector3.new(look.size, look.size, look.size)
-	state.plant.Color = look.color
-	state.plant.Position = state.soil.Position + Vector3.new(0, state.soil.Size.Y / 2 + look.size / 2, 0)
-	state.soil:SetAttribute("Stage", stage)
-	state.soil:SetAttribute("Fraction", fraction)
-end
-
-local function createPlot(player: Player, container: Instance): PlotState
-	local slot = freeSlot()
+local function buildPlotParts(player: Player, slot: number, container: Instance): (Part, Part, ProximityPrompt)
 	local base = spawnPosition()
 	local x = base.X + (slot - 1) * PLOT_SPACING
 	local z = base.Z - PLOT_DISTANCE
@@ -118,39 +184,42 @@ local function createPlot(player: Player, container: Instance): PlotState
 	prompt.UIOffset = Vector2.new(0, -90) -- lift the button off the bottom edge of a phone screen
 	prompt.Parent = soil
 
-	local state: PlotState = {
-		slot = slot,
-		plot = { seedId = TEST_SEED.seedId, plantedAt = os.time(), careGauge = 0, lastTendAt = 0 },
-		soil = soil,
-		plant = plant,
-		pending = nil,
-	}
-	refresh(state)
-	return state
+	return soil, plant, prompt
 end
 
-local function distanceToPlot(player: Player, state: PlotState): number
-	local character = player.Character
+local function distanceToPlot(s: Session): number
+	local character = s.player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not (root and root:IsA("BasePart")) then
 		return math.huge
 	end
-	return (root.Position - state.soil.Position).Magnitude
+	return (root.Position - s.soil.Position).Magnitude
 end
 
-local function begin(player: Player, state: PlotState, payload: unknown): any
+local function fail(reason: string): any
+	return { ok = false, reason = reason }
+end
+
+-- ---------------------------------------------------------------------------------------------
+-- Tend (the rhythm run)
+
+local function tendBegin(s: Session, payload: unknown): any
 	if type(payload) ~= "string" or table.find(Difficulty.Names, payload) == nil then
-		return { ok = false, reason = "bad difficulty" }
+		return fail("bad difficulty")
 	end
 	local difficulty = payload :: Difficulty.Name
-	if distanceToPlot(player, state) > TEND_RANGE then
-		return { ok = false, reason = "too far from the plant" }
+	local plot = plotOf(s)
+	if not plot then
+		return fail("nothing planted")
+	end
+	if distanceToPlot(s) > TEND_RANGE then
+		return fail("too far from the plant")
 	end
 	local now = os.time()
-	if Growth.stageFor(Growth.fraction(state.plot, TEST_SEED.growSeconds, now)) == "Fruit" then
-		return { ok = false, reason = "fully grown" }
+	if Growth.stageFor(fractionOf(plot, now)) == "Fruit" then
+		return fail("fully grown")
 	end
-	local wait = Growth.cooldownLeft(state.plot, now, COOLDOWN_SECONDS)
+	local wait = Growth.cooldownLeft(plot, now, COOLDOWN_SECONDS)
 	if wait > 0 then
 		return { ok = false, reason = `rest a little more ({wait}s)`, cooldown = wait }
 	end
@@ -160,32 +229,40 @@ local function begin(player: Player, state: PlotState, payload: unknown): any
 	local pending = (
 		{ segment = segment, startedAt = os.clock(), difficulty = difficulty :: Difficulty.Name } :: any
 	) :: Pending
-	state.pending = pending
+	s.pending = pending
 	return { ok = true, segment = segment, bpm = TestCharts.Bpm[difficulty], difficulty = difficulty }
 end
 
-local function submit(player: Player, state: PlotState, payload: unknown): any
-	local pending = state.pending
-	state.pending = nil
+local function tendSubmit(s: Session, payload: unknown): any
+	local pending = s.pending
+	s.pending = nil
 	if not pending then
-		return { ok = false, reason = "no run in progress" }
+		return fail("no run in progress")
+	end
+	local plot = plotOf(s)
+	if not plot then
+		return fail("nothing planted")
 	end
 	local elapsedMs = (os.clock() - pending.startedAt) * 1000
 	local result = RhythmEngine.Validator.validate(pending.segment, payload, { elapsedMs = elapsedMs })
 	if not result.ok or not result.tally then
-		print(`[Garden] {player.Name}: run rejected ({result.reason})`)
-		return { ok = false, reason = result.reason or "rejected" }
+		print(`[Garden] {s.player.Name}: run rejected ({result.reason})`)
+		return fail(result.reason or "rejected")
 	end
 
 	local tally = result.tally
 	local points = Growth.tendPoints(tally.accuracy, pending.difficulty)
+	local mutationMult = Difficulty.MutationChanceMultiplier[pending.difficulty]
 	local now = os.time()
-	state.plot.careGauge += points
-	state.plot.lastTendAt = now
-	refresh(state)
+	Growth.applyTend(plot, points, tally.maxPerfectStreak, mutationMult, now)
+	local d = data(s)
+	d.stats.tends += 1
+	d.stats.perfects += tally.counts.Perfect
+	refresh(s)
+	push(s)
 
-	local fraction = Growth.fraction(state.plot, TEST_SEED.growSeconds, now)
-	print(`[Garden] {player.Name}: {pending.difficulty} acc {math.floor(tally.accuracy * 100)}% -> +{points} growth`)
+	local fraction = fractionOf(plot, now)
+	print(`[Garden] {s.player.Name}: {pending.difficulty} acc {math.floor(tally.accuracy * 100)}% -> +{points} growth`)
 	return {
 		ok = true,
 		points = points,
@@ -199,52 +276,233 @@ local function submit(player: Player, state: PlotState, payload: unknown): any
 	}
 end
 
+-- ---------------------------------------------------------------------------------------------
+-- Garden actions
+
+local function plant(s: Session, payload: unknown): any
+	if type(payload) ~= "string" or Seeds.get(payload) == nil then
+		return fail("unknown seed")
+	end
+	if plotOf(s) then
+		return fail("the plot is not empty")
+	end
+	if distanceToPlot(s) > TEND_RANGE then
+		return fail("too far from the plot")
+	end
+	local d = data(s)
+	local count = d.seeds[payload] or 0
+	if count < 1 then
+		return fail("you have no such seed")
+	end
+	if count > 1 then
+		d.seeds[payload] = count - 1
+	else
+		d.seeds[payload] = nil
+	end
+	d.plots[PLOT_KEY] = Growth.newPlot(payload, os.time())
+	refresh(s)
+	push(s)
+	return { ok = true, seedId = payload }
+end
+
+local function harvest(s: Session): any
+	local plot = plotOf(s)
+	if not plot then
+		return fail("nothing planted")
+	end
+	if distanceToPlot(s) > TEND_RANGE then
+		return fail("too far from the plant")
+	end
+	if Growth.stageFor(fractionOf(plot, os.time())) ~= "Fruit" then
+		return fail("not ready yet")
+	end
+	local d = data(s)
+	if #d.fruits >= PlayerData.MaxFruits then
+		return fail("your bag is full - sell some fruit")
+	end
+
+	local mutation = Mutations.roll(plot.bestPerfectStreak, plot.mutationMult, math.random)
+	local weight = Economy.rollWeight(math.random)
+	table.insert(d.fruits, { seedId = plot.seedId, mutation = mutation, weight = weight })
+	d.stats.harvests += 1
+	d.plots[PLOT_KEY] = nil
+	refresh(s)
+	push(s)
+
+	local value = Economy.fruitValue(plot.seedId, mutation, weight)
+	print(`[Garden] {s.player.Name}: harvested {plot.seedId} mutation={mutation} weight={weight} value={value}`)
+	return { ok = true, seedId = plot.seedId, mutation = mutation, weight = weight, value = value }
+end
+
+local function buy(s: Session, payload: unknown): any
+	local seed = if type(payload) == "string" then Seeds.get(payload) else nil
+	if not seed then
+		return fail("unknown seed")
+	end
+	local d = data(s)
+	if d.coins < seed.price then
+		return fail("not enough coins")
+	end
+	d.coins -= seed.price
+	d.seeds[seed.seedId] = (d.seeds[seed.seedId] or 0) + 1
+	push(s)
+	return { ok = true, seedId = seed.seedId, price = seed.price }
+end
+
+local function sellAll(s: Session): any
+	local d = data(s)
+	if #d.fruits == 0 then
+		return fail("no fruit to sell")
+	end
+	local total = 0
+	for _, fruit in d.fruits do
+		total += Economy.fruitValue(fruit.seedId, fruit.mutation, fruit.weight)
+	end
+	local count = #d.fruits
+	d.fruits = {}
+	d.coins += total
+	push(s)
+	return { ok = true, total = total, count = count }
+end
+
+local function setLatency(s: Session, payload: unknown): any
+	if type(payload) ~= "number" or payload ~= payload then
+		return fail("bad value")
+	end
+	data(s).settings.latencyMs =
+		math.round(math.clamp(payload, PlayerData.LatencyRange.min, PlayerData.LatencyRange.max))
+	return { ok = true }
+end
+
+-- ---------------------------------------------------------------------------------------------
+
+local function createSession(player: Player, container: Instance): Session?
+	local store = PlayerStore.load(player, function(message)
+		player:Kick(message)
+	end)
+	if player.Parent == nil then
+		PlayerStore.save(store, true) -- left while loading: release the lock
+		return nil
+	end
+	local slot = freeSlot()
+	local soil, plantPart, prompt = buildPlotParts(player, slot, container)
+	local s: Session = {
+		player = player,
+		slot = slot,
+		store = store,
+		soil = soil,
+		plant = plantPart,
+		prompt = prompt,
+		pending = nil,
+	}
+	sessions[player] = s
+	refresh(s)
+	push(s)
+	if not store.persistent then
+		print(`[Garden] {player.Name}: progress will NOT be saved (DataStore unavailable)`)
+	end
+	return s
+end
+
 function Garden.start()
 	local container = Instance.new("Folder")
 	container.Name = "Garden"
 	container.Parent = Workspace
 
-	local remote = Instance.new("RemoteFunction")
-	remote.Name = "Tend"
-	remote.Parent = ReplicatedStorage
+	updateEvent = Instance.new("RemoteEvent")
+	updateEvent.Name = "GardenUpdate"
+	updateEvent.Parent = ReplicatedStorage
 
-	remote.OnServerInvoke = function(player: Player, action: unknown, payload: unknown): any
-		local state = plots[player]
-		if not state then
-			return { ok = false, reason = "no plot" }
+	local tendRemote = Instance.new("RemoteFunction")
+	tendRemote.Name = "Tend"
+	tendRemote.Parent = ReplicatedStorage
+	tendRemote.OnServerInvoke = function(player: Player, action: unknown, payload: unknown): any
+		local s = sessions[player]
+		if not s then
+			return fail("not ready")
 		end
 		if action == "begin" then
-			return begin(player, state, payload)
+			return tendBegin(s, payload)
 		elseif action == "submit" then
-			return submit(player, state, payload)
+			return tendSubmit(s, payload)
+		end
+		return nil
+	end
+
+	local gardenRemote = Instance.new("RemoteFunction")
+	gardenRemote.Name = "Garden"
+	gardenRemote.Parent = ReplicatedStorage
+	gardenRemote.OnServerInvoke = function(player: Player, action: unknown, payload: unknown): any
+		local s = sessions[player]
+		if not s then
+			return fail("not ready")
+		end
+		if action == "state" then
+			return { ok = true, state = snapshot(s) }
+		elseif action == "plant" then
+			return plant(s, payload)
+		elseif action == "harvest" then
+			return harvest(s)
+		elseif action == "buy" then
+			return buy(s, payload)
+		elseif action == "sellAll" then
+			return sellAll(s)
+		elseif action == "setLatency" then
+			return setLatency(s, payload)
 		end
 		return nil
 	end
 
 	local function onPlayerAdded(player: Player)
-		if plots[player] == nil then
-			plots[player] = createPlot(player, container)
+		if sessions[player] == nil then
+			createSession(player, container)
 		end
 	end
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	for _, player in Players:GetPlayers() do
-		onPlayerAdded(player)
+		task.spawn(onPlayerAdded, player)
 	end
 
 	Players.PlayerRemoving:Connect(function(player)
-		local state = plots[player]
-		plots[player] = nil
-		if state then
-			state.soil:Destroy()
+		local s = sessions[player]
+		sessions[player] = nil
+		if s then
+			PlayerStore.save(s.store, true)
+			s.soil:Destroy()
 		end
 	end)
 
-	-- Plants keep growing with time, so refresh their look once a second.
+	-- Server shutting down: save everyone and release their locks (Studio waits for this too).
+	game:BindToClose(function()
+		local remaining = 0
+		for player, s in sessions do
+			sessions[player] = nil
+			remaining += 1
+			task.spawn(function()
+				PlayerStore.save(s.store, true)
+				remaining -= 1
+			end)
+		end
+		local deadline = os.clock() + 25
+		while remaining > 0 and os.clock() < deadline do
+			task.wait(0.1)
+		end
+	end)
+
+	-- Plants keep growing with time, so redraw them once a second; autosave every minute.
 	task.spawn(function()
+		local sinceSave = 0
 		while true do
 			task.wait(1)
-			for _, state in plots do
-				refresh(state)
+			sinceSave += 1
+			for _, s in sessions do
+				refresh(s)
+			end
+			if sinceSave >= AUTOSAVE_SECONDS then
+				sinceSave = 0
+				for _, s in sessions do
+					task.spawn(PlayerStore.save, s.store, false)
+				end
 			end
 		end
 	end)

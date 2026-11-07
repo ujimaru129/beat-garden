@@ -28,4 +28,12 @@ Difficulty.GrowthMultiplier = table.freeze({
 	Hard = 1.5,
 }) :: { [Name]: number }
 
+-- Reward: multiplier on the chance of a mutation when the fruit is harvested (initial values).
+-- Spec: Easy none, Normal small, Hard medium.
+Difficulty.MutationChanceMultiplier = table.freeze({
+	Easy = 1,
+	Normal = 1.2,
+	Hard = 1.4,
+}) :: { [Name]: number }
+
 return table.freeze(Difficulty)
