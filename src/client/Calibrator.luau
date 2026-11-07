@@ -86,10 +86,15 @@ function Calibrator.create(onSaved: ((latencyMs: number) -> ())?): Calibrator
 	}, tapArea) :: TextLabel
 	make("UISizeConstraint", { MaxSize = Vector2.new(600, 60) }, title)
 
+	-- Ring size follows the screen height so it never reaches the title on a landscape phone.
+	local function ringBase(): number
+		return math.clamp(gui.AbsoluteSize.Y * 0.26, 70, 160)
+	end
+
 	local ring = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.4),
-		Size = UDim2.fromOffset(160, 160),
+		Position = UDim2.fromScale(0.5, 0.44),
+		Size = UDim2.fromOffset(ringBase(), ringBase()),
 		BackgroundColor3 = Palette.Hues.Sora.Night,
 		BackgroundTransparency = 0.6,
 	}, tapArea) :: Frame
@@ -165,7 +170,7 @@ function Calibrator.create(onSaved: ((latencyMs: number) -> ())?): Calibrator
 	local function showResult(offsets: { number })
 		disconnect()
 		recommended = Calibration.estimate(offsets)
-		ring.Size = UDim2.fromOffset(160, 160)
+		ring.Size = UDim2.fromOffset(ringBase(), ringBase())
 		buttons.Visible = true
 		saveButton.Visible = recommended ~= nil
 		saveButton.Size = if recommended then UDim2.new(0.5, -6, 1, 0) else UDim2.fromScale(0, 1)
@@ -231,7 +236,7 @@ function Calibrator.create(onSaved: ((latencyMs: number) -> ())?): Calibrator
 
 			-- Ring: pulses big on the beat, shrinks back; tap flash fades out.
 			local phase = (nowMs % BEAT_MS) / BEAT_MS
-			local size = 160 + 40 * (1 - phase)
+			local size = ringBase() * (1 + 0.25 * (1 - phase))
 			ring.Size = UDim2.fromOffset(size, size)
 			ring.BackgroundTransparency = math.min(0.6, ring.BackgroundTransparency + 0.03)
 

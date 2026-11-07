@@ -33,9 +33,11 @@ local KEY_LABELS = { "D", "F", "J", "K" }
 local SHAPE_GLYPHS = { Circle = "●", Triangle = "▲", Square = "■", Diamond = "◆" }
 
 local SCROLL_MS = 1500 -- how long a note is visible before reaching the hit line
-local LANE_WIDTH = 3 -- studs
-local LANE_LENGTH = 50 -- studs from the hit line to where notes appear
+local LANE_WIDTH = 4.5 -- studs (wide, so the lanes fill a landscape phone screen)
+local NOTE_SCALE = LANE_WIDTH / 3 -- note pieces were drawn for 3-stud lanes
+local LANE_LENGTH = 40 -- studs from the hit line to where notes appear
 local HIT_AHEAD = 7 -- studs between the character and the hit line
+local CHARACTER_FADE = 0.6 -- the character stands near the hit line, so it is drawn faint during a run
 local METRONOME_SOUND = "rbxasset://sounds/electronicpingshort.wav"
 
 local JUDGEMENT_COLORS: { [string]: Color3 } = {
@@ -104,16 +106,16 @@ local function makeNotePart(lane: number, parent: Instance): BasePart
 	props.Transparency = 1
 	if shape == "Circle" then
 		props.Shape = Enum.PartType.Cylinder
-		props.Size = Vector3.new(0.6, 2.4, 2.4)
+		props.Size = Vector3.new(0.6, 2.4, 2.4) * NOTE_SCALE
 		return make("Part", props, parent)
 	elseif shape == "Triangle" then
-		props.Size = Vector3.new(0.6, 2.4, 2.4)
+		props.Size = Vector3.new(0.6, 2.4, 2.4) * NOTE_SCALE
 		return make("WedgePart", props, parent)
 	elseif shape == "Diamond" then
-		props.Size = Vector3.new(1.8, 0.6, 1.8)
+		props.Size = Vector3.new(1.8, 0.6, 1.8) * NOTE_SCALE
 		return make("Part", props, parent)
 	end
-	props.Size = Vector3.new(2.2, 0.6, 2.2)
+	props.Size = Vector3.new(2.2, 0.6, 2.2) * NOTE_SCALE
 	return make("Part", props, parent)
 end
 
@@ -281,10 +283,25 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		savedCameraType = camera.CameraType
 		savedCameraCFrame = camera.CFrame
 		camera.CameraType = Enum.CameraType.Scriptable
+		-- Back off just enough that all four lanes fit the screen width: far for a portrait phone,
+		-- close for landscape. It never goes in front of the character's side of the hit line.
+		local viewport = camera.ViewportSize
+		local aspect = math.max(viewport.X, 1) / math.max(viewport.Y, 1)
+		local halfFovTan = math.tan(math.rad(camera.FieldOfView) / 2)
+		local back = math.clamp(LANE_WIDTH * 4 * 0.6 / (halfFovTan * aspect), 9, 34)
+		back = math.max(back, HIT_AHEAD + 2)
 		camera.CFrame = CFrame.lookAt(
-			origin:PointToWorldSpace(Vector3.new(0, 11, HIT_AHEAD + 8)),
+			origin:PointToWorldSpace(Vector3.new(0, back * 0.7 + 2, back)),
 			origin:PointToWorldSpace(Vector3.new(0, 0, -LANE_LENGTH * 0.3))
 		)
+	end
+	local character = (Players.LocalPlayer :: Player).Character
+	if character then
+		for _, d in character:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.LocalTransparencyModifier = CHARACTER_FADE
+			end
+		end
 	end
 	RhythmOverlay.setMovementEnabled(false)
 
@@ -351,6 +368,13 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			camera.CameraType = savedCameraType or Enum.CameraType.Custom
 			if savedCameraCFrame then
 				camera.CFrame = savedCameraCFrame
+			end
+		end
+		if character then
+			for _, d in character:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.LocalTransparencyModifier = 0
+				end
 			end
 		end
 		RhythmOverlay.setMovementEnabled(true)
