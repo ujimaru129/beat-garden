@@ -3,6 +3,7 @@
 「音で育てて、音で守る、音で奪う」育成×収集×リズムのRobloxゲーム。
 
 - 詳細仕様書: [docs/spec.md](docs/spec.md)
+- 3Dキャラ制作手順: [docs/3d-pipeline.md](docs/3d-pipeline.md)
 - キャラクター方針: [docs/character-direction.md](docs/character-direction.md)
 
 ## 開発環境のセットアップ
