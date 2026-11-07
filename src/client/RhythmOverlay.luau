@@ -22,6 +22,8 @@ export type Options = {
 	-- With real audio, pass a function reading Sound.TimePosition (minus regionStartMs).
 	getSongTimeMs: (() -> number)?,
 	leadInMs: number?,
+	-- How long a note is visible before the hit line (ms). Default SCROLL_MS; see Shared.Difficulty.
+	scrollMs: number?,
 	-- Metronome tick on every beat (only used with the default clock).
 	bpm: number?,
 	metronome: boolean?,
@@ -115,6 +117,7 @@ end
 
 -- Plays one segment. Returns a function that aborts the run early.
 function RhythmOverlay.play(segment: RhythmEngine.Segment, options: Options): () -> ()
+	local scrollMs = options.scrollMs or SCROLL_MS
 	local session = RhythmEngine.Session.new(segment, {
 		latencyMs = options.latencyMs,
 		chartOffsetMs = options.chartOffsetMs,
@@ -391,11 +394,11 @@ function RhythmOverlay.play(segment: RhythmEngine.Segment, options: Options): ()
 				continue
 			end
 			local untilHit = note.timeMs + latency - now
-			if untilHit > SCROLL_MS or untilHit < -RhythmEngine.Judge.DefaultWindows.Good then
+			if untilHit > scrollMs or untilHit < -RhythmEngine.Judge.DefaultWindows.Good then
 				view.Visible = false
 			else
 				view.Visible = true
-				view.Position = UDim2.fromScale(0.5, HIT_LINE * (1 - untilHit / SCROLL_MS))
+				view.Position = UDim2.fromScale(0.5, HIT_LINE * (1 - untilHit / scrollMs))
 			end
 		end
 

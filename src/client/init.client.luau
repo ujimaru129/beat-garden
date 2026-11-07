@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
 local RhythmLane3D = require(script.RhythmLane3D)
 local RhythmOverlay = require(script.RhythmOverlay)
 
@@ -32,6 +33,7 @@ if RunService:IsStudio() then
 		local options: RhythmOverlay.Options = {
 			latencyMs = tonumber(player:GetAttribute("LatencyMs")) or 0,
 			bpm = info.bpm,
+			scrollMs = (Difficulty.ScrollMs :: any)[chartName],
 			metronome = true,
 			onFinished = function(summary)
 				local verdict = remote:InvokeServer("submit", summary)

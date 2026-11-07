@@ -131,6 +131,7 @@ end
 
 -- Plays one segment. Returns a function that aborts the run early.
 function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () -> ()
+	local scrollMs = options.scrollMs or SCROLL_MS
 	local session = RhythmEngine.Session.new(segment, {
 		latencyMs = options.latencyMs,
 		chartOffsetMs = options.chartOffsetMs,
@@ -387,11 +388,11 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 				continue
 			end
 			local untilHit = note.timeMs + latency - now
-			if untilHit > SCROLL_MS or untilHit < -RhythmEngine.Judge.DefaultWindows.Good then
+			if untilHit > scrollMs or untilHit < -RhythmEngine.Judge.DefaultWindows.Good then
 				part.Transparency = 1
 			else
 				part.Transparency = 0
-				part.CFrame = noteCFrame(origin, note.lane, -LANE_LENGTH * (untilHit / SCROLL_MS))
+				part.CFrame = noteCFrame(origin, note.lane, -LANE_LENGTH * (untilHit / scrollMs))
 			end
 		end
 
