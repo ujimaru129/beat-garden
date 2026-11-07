@@ -5,6 +5,7 @@
 -- Prototype only: strings are not yet routed through the translation table,
 -- and the look is placeholder (Palette night colors on a dark backdrop).
 
+local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -57,9 +58,39 @@ local JUDGEMENT_COLORS: { [string]: Color3 } = {
 
 -- Character movement shares keys with the lanes (D), so movement is off while the overlay is up.
 local savedWalkSpeed: number? = nil
+local jumpBackup: { humanoid: Humanoid, power: number, height: number }? = nil
+local SINK_ACTION = "RhythmSinkJump"
+
+-- Space / gamepad A must never make the character jump during a run or calibration.
+-- Humanoid-level lock plus an input sink, so it holds whatever the default controls do.
+local function setJumpEnabled(player: Player, enabled: boolean)
+	if enabled then
+		ContextActionService:UnbindAction(SINK_ACTION)
+		local backup = jumpBackup
+		jumpBackup = nil
+		if backup then
+			backup.humanoid.JumpPower = backup.power
+			backup.humanoid.JumpHeight = backup.height
+			backup.humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+		end
+		return
+	end
+	ContextActionService:BindActionAtPriority(SINK_ACTION, function()
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.Space, Enum.KeyCode.ButtonA)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid and not jumpBackup then
+		jumpBackup = { humanoid = humanoid, power = humanoid.JumpPower, height = humanoid.JumpHeight }
+		humanoid.JumpPower = 0
+		humanoid.JumpHeight = 0
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+	end
+end
 
 local function setMovementEnabled(enabled: boolean)
 	local player = Players.LocalPlayer :: Player
+	setJumpEnabled(player, enabled)
 	-- Never wait for the PlayerModule: if it is missing, WaitForChild would block the whole run.
 	local scripts = player:FindFirstChild("PlayerScripts")
 	local moduleScript = scripts and scripts:FindFirstChild("PlayerModule")
