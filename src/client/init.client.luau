@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local RhythmLane3D = require(script.RhythmLane3D)
 local RhythmOverlay = require(script.RhythmOverlay)
 
 -- Rhythm prototype (Studio only): 1 = Easy, 2 = Normal, 3 = Hard.
@@ -28,7 +29,7 @@ if RunService:IsStudio() then
 		end
 		running = true
 		local info = remote:InvokeServer("start", chartName)
-		RhythmOverlay.play(info.segment, {
+		local options: RhythmOverlay.Options = {
 			latencyMs = tonumber(player:GetAttribute("LatencyMs")) or 0,
 			bpm = info.bpm,
 			metronome = true,
@@ -43,7 +44,13 @@ if RunService:IsStudio() then
 				)
 				running = false
 			end,
-		})
+		}
+		-- 3D lane by default. Set the LocalPlayer attribute "Rhythm2D" to true for the flat overlay.
+		if player:GetAttribute("Rhythm2D") == true then
+			RhythmOverlay.play(info.segment, options)
+		else
+			RhythmLane3D.play(info.segment, options)
+		end
 	end)
 	print("[BeatGarden] rhythm prototype ready: press 1 Easy / 2 Normal / 3 Hard")
 end

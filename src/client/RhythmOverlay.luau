@@ -54,20 +54,42 @@ local JUDGEMENT_COLORS: { [string]: Color3 } = {
 }
 
 -- Character movement shares keys with the lanes (D), so movement is off while the overlay is up.
+local savedWalkSpeed: number? = nil
+
 local function setMovementEnabled(enabled: boolean)
-	local ok, err = pcall(function()
-		local player = Players.LocalPlayer :: Player
-		local playerModule =
-			require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule") :: ModuleScript) :: any
-		local controls = playerModule:GetControls()
-		if enabled then
-			controls:Enable()
-		else
-			controls:Disable()
+	local player = Players.LocalPlayer :: Player
+	-- Never wait for the PlayerModule: if it is missing, WaitForChild would block the whole run.
+	local scripts = player:FindFirstChild("PlayerScripts")
+	local moduleScript = scripts and scripts:FindFirstChild("PlayerModule")
+	if moduleScript and moduleScript:IsA("ModuleScript") then
+		local ok, err = pcall(function()
+			local controls = (require(moduleScript) :: any):GetControls()
+			if enabled then
+				controls:Enable()
+			else
+				controls:Disable()
+			end
+		end)
+		if not ok then
+			warn("[RhythmOverlay] could not toggle movement:", err)
 		end
-	end)
-	if not ok then
-		warn("[RhythmOverlay] could not toggle movement:", err)
+		return
+	end
+
+	-- Fallback: freeze the character by walk speed.
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	if enabled then
+		if savedWalkSpeed then
+			humanoid.WalkSpeed = savedWalkSpeed
+			savedWalkSpeed = nil
+		end
+	elseif savedWalkSpeed == nil then
+		savedWalkSpeed = humanoid.WalkSpeed
+		humanoid.WalkSpeed = 0
 	end
 end
 
@@ -395,5 +417,8 @@ end
 
 -- Replaced while a run is active.
 function RhythmOverlay._onTap(_lane: number) end
+
+-- Shared with RhythmLane3D: character movement shares keys with the lanes (D).
+RhythmOverlay.setMovementEnabled = setMovementEnabled
 
 return RhythmOverlay
