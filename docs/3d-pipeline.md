@@ -1,6 +1,6 @@
 # 3Dキャラ制作手順（AI → Blender → Roblox）
 
-自分で進めるための手順書。
+自分で進めるための手順書。最初に作るのは **案B「おとだま」**（同じ体の色違い。[character-direction.md](character-direction.md)）。MVPでは Sakura と Matcha の2色を使う。
 
 **進める順番（11/7決定）：まずはゲームから。**
 1. 今〜ローンチ：**ゲーム内ペット（ビートスピリット）として作るだけ**。Robux も Roblox Plus も不要
@@ -47,17 +47,26 @@ simple rounded shapes, soft vinyl toy look, full body, front view, standing pose
 plain white background, no text, no logo, 3D render
 ```
 
-ハルの例：
+案B「おとだま」の素体（色を後から塗り分けるので、白っぽく・飾りなしで作る）：
 
 ```text
-cute chibi mascot character, small kitten spirit, pastel pink (#F7C6D9) body,
-ear tips shaped like cherry blossom petals, wearing chunky rounded headphones in
-neon pink (#FF4FA3), big round expressive eyes, short arms and legs, simple rounded
-shapes, soft vinyl toy look, full body, front view, standing pose, plain white
-background, no text, no logo, 3D render
+cute chibi mascot spirit, round mochi-like body with a face on it, no neck,
+off-white body, wearing chunky rounded headphones, big round expressive eyes,
+tiny arms and legs, simple rounded shapes, soft vinyl toy look, nothing on the head,
+full body, front view, standing pose, plain white background, no text, no logo, 3D render
 ```
 
-- [ ] 気に入った案を3〜5枚に絞り、リポジトリの `assets/characters/haru/concept/` に保存
+頭の飾り（素体とは別に、1つずつ作る）：
+
+```text
+small stylized {cherry blossom petal / water droplet / moss with tiny sprout /
+yuzu stem with leaf / paper lantern}, simple rounded shapes, soft vinyl toy look,
+single object, plain white background, no text, 3D render
+```
+
+案A（動物）のときは、ひな形の `{モチーフ}` などを埋めて使う（例：small kitten spirit, ear tips shaped like cherry blossom petals）。
+
+- [ ] 気に入った素体の案を3〜5枚に絞り、リポジトリの `assets/characters/otodama/concept/` に保存
 - [ ] 既存の有名キャラに似ていないか確認（画像検索で似た見た目が出てこないか）
 
 ## 2. 画像から3Dモデルを作る（AI）
@@ -85,12 +94,13 @@ File > Export > FBX：
 
 （glTF で書き出す場合はスケール設定は不要）
 
-- [ ] 書き出したファイルを `assets/characters/haru/export/haru.fbx` に保存
+- 案Bの場合：素体と飾りを結合し、色を塗り分けてから種類ごとに書き出す
+- [ ] 書き出したファイルを `assets/characters/otodama/export/otodama_sakura.fbx`・`otodama_matcha.fbx` に保存
 
 ## 5. Studio に取り込む（ゲーム内ペット用）← 今はここがゴール
 
 1. File > **Import 3D** で FBX を読み込む
-2. できた MeshPart の名前をキャラ名（例：`Haru`）にして、ここで止めて見せてください
+2. できた MeshPart の名前を種類名（例：`Otodama_Sakura`）にして、ここで止めて見せてください
 3. ペットとして連れ歩く処理・ふわふわ揺れる動き・夜の発光はこちらでコードを書く（ペットは発光を足しても費用はかからない）
 
 ---
