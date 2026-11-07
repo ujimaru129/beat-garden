@@ -4,6 +4,14 @@
 -- Judgement names, best to worst.
 export type Judgement = "Perfect" | "Great" | "Good" | "Miss"
 
+-- Number of notes per judgement.
+export type Counts = {
+	Perfect: number,
+	Great: number,
+	Good: number,
+	Miss: number,
+}
+
 -- Half-widths of each judgement window in ms (a hit counts if |offset| <= window).
 export type Windows = {
 	Perfect: number,
@@ -36,7 +44,7 @@ export type Summary = {
 	-- Per note, in note order: hit offset in ms (input time - note time, after latency correction),
 	-- or false for a miss.
 	offsets: { number | false },
-	counts: { [Judgement]: number },
+	counts: Counts,
 	maxCombo: number,
 	maxPerfectStreak: number,
 	accuracy: number, -- 0..1, weighted by JudgementWeight

@@ -5,6 +5,7 @@ local Types = require(script.Parent.Types)
 
 type Judgement = Types.Judgement
 type Windows = Types.Windows
+type Counts = Types.Counts
 
 local Judge = {}
 
@@ -38,7 +39,7 @@ function Judge.classify(offsetMs: number, windows: Windows?): Judgement?
 end
 
 export type Tally = {
-	counts: { [Judgement]: number },
+	counts: Counts,
 	maxCombo: number,
 	maxPerfectStreak: number,
 	accuracy: number,
@@ -47,17 +48,18 @@ export type Tally = {
 -- Recompute counts, combo and accuracy from a per-note offsets list (false = miss).
 -- The client and the server both use this so they always agree.
 function Judge.tally(offsets: { number | false }, windows: Windows?): Tally
-	local counts: { [Judgement]: number } = { Perfect = 0, Great = 0, Good = 0, Miss = 0 }
+	local counts: Counts = { Perfect = 0, Great = 0, Good = 0, Miss = 0 }
 	local combo, maxCombo = 0, 0
 	local streak, maxStreak = 0, 0
 	local weightSum = 0
 
 	for _, o in offsets do
 		local j: Judgement = "Miss"
-		if o ~= false then
+		if type(o) == "number" then
 			j = Judge.classify(o, windows) or "Miss"
 		end
-		counts[j] += 1
+		-- j is always one of the four Counts keys; the cast only sidesteps Luau's union-key indexing.
+		(counts :: any)[j] += 1
 		weightSum += Judge.Weight[j]
 
 		if j == "Miss" then

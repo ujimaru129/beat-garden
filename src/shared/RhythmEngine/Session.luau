@@ -11,6 +11,7 @@ type Segment = Types.Segment
 type Windows = Types.Windows
 type Summary = Types.Summary
 type HitResult = Types.HitResult
+type Judgement = Types.Judgement
 
 export type Options = {
 	latencyMs: number?, -- player calibration (settings.latencyMs). Positive = player hits late.
@@ -71,7 +72,7 @@ end
 function Session._judge(self: Session, note: Note, offset: number | false): HitResult
 	self.offsets[note.index] = offset
 	self.judgedCount += 1
-	local judgement = if offset == false then "Miss" else (Judge.classify(offset, self.windows) or "Miss")
+	local judgement: Judgement = if offset == false then "Miss" else (Judge.classify(offset, self.windows) or "Miss")
 	if judgement == "Miss" then
 		self.combo = 0
 	else
@@ -145,7 +146,7 @@ function Session.getSummary(self: Session): Summary
 	local offsets: { number | false } = table.create(#self.notes)
 	for i = 1, #self.notes do
 		local o = self.offsets[i]
-		offsets[i] = if o == nil then false else o
+		offsets[i] = if type(o) == "number" then o else false
 	end
 	local tally = Judge.tally(offsets, self.windows)
 	return {

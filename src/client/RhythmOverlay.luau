@@ -84,7 +84,8 @@ local function make(className: string, props: { [string]: any }, children: { Ins
 	for k, v in props do
 		(inst :: any)[k] = v
 	end
-	for _, child in children or {} do
+	local list: { Instance } = children or {}
+	for _, child in list do
 		child.Parent = inst
 	end
 	return inst
