@@ -68,6 +68,7 @@ Nov 7, 2026 · 参考イメージ共有時のメモ。シリーズ共通の3Dキ
 出典：https://create.roblox.com/docs/marketplace/marketplace-fees-and-commissions
 
 - 出品者は**本人確認（政府発行ID）済み**であること
+- 出品と販売継続には、出品者（コミュニティ名義ならコミュニティの持ち主）が **Roblox Plus**（または旧 Premium 1000/2200）に加入していること。解約すると販売停止になる。2段階認証も必須（出典：https://create.roblox.com/docs/marketplace/marketplace-policy 、11/7確認）
 - **アップロード料**：1回80 Robux（発光マスクを使うと500 Robux）。審査で落ちても返金されない
 - **出品時の前払い**（売上から回収される）：Shoulder / Back が1,000、Hat が1,500、Body が2,500、Head が1,500 Robux（通常アイテムの場合）
 - ゲーム内（MarketplaceService など）で売れると、**ゲームの持ち主にも手数料が入る**。Beat Garden の中でも同じアイテムを売ると効率が良い
