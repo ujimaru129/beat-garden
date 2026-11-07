@@ -11,6 +11,7 @@ local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Toast = require(script.Parent.Toast)
+local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
 local MarketUI = {}
 
@@ -24,6 +25,8 @@ local function fruitLabel(seedId: string, mutation: string?): string
 	return if mutation then `{Mutations.displayName(mutation)} {name}` else name
 end
 
+-- The actions come first (a landscape phone only shows about three rows without scrolling);
+-- the details of what is in the bag come last. Coins are in the title.
 local function rowsFor(
 	snapshot: GardenState.Snapshot,
 	sellAll: () -> (),
@@ -31,39 +34,32 @@ local function rowsFor(
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
 
-	table.insert(rows, { text = `Coins: {snapshot.coins}` })
+	local total = 0
+	local groups: { [string]: { label: string, count: number, value: number } } = {}
+	local order: { string } = {}
+	for _, fruit in snapshot.fruits do
+		total += fruit.value
+		local key = `{fruit.seedId}|{fruit.mutation or ""}`
+		local group = groups[key]
+		if not group then
+			group = { label = fruitLabel(fruit.seedId, fruit.mutation), count = 0, value = 0 }
+			groups[key] = group
+			table.insert(order, key)
+		end
+		group.count += 1
+		group.value += fruit.value
+	end
 
-	-- Fruit: grouped so a big bag stays readable.
 	if #snapshot.fruits == 0 then
 		table.insert(rows, { text = "No fruit to sell yet" })
 	else
-		local total = 0
-		local groups: { [string]: { label: string, count: number, value: number } } = {}
-		local order: { string } = {}
-		for _, fruit in snapshot.fruits do
-			total += fruit.value
-			local key = `{fruit.seedId}|{fruit.mutation or ""}`
-			local group = groups[key]
-			if not group then
-				group = { label = fruitLabel(fruit.seedId, fruit.mutation), count = 0, value = 0 }
-				groups[key] = group
-				table.insert(order, key)
-			end
-			group.count += 1
-			group.value += fruit.value
-		end
 		table.insert(rows, {
 			text = `Sell all ({#snapshot.fruits} fruit)  +{total}`,
 			color = Palette.Hues.Yuzu.Night,
 			onTap = sellAll,
 		})
-		for _, key in order do
-			local group = groups[key]
-			table.insert(rows, { text = `{group.label} x{group.count}  ({group.value})` })
-		end
 	end
 
-	table.insert(rows, { text = "Seeds" })
 	for _, seed in Seeds.List do
 		local own = snapshot.seeds[seed.seedId] or 0
 		local affordable = snapshot.coins >= seed.price
@@ -74,6 +70,11 @@ local function rowsFor(
 				buy(seed.seedId)
 			end,
 		})
+	end
+
+	for _, key in order do
+		local group = groups[key]
+		table.insert(rows, { text = `In your bag: {group.label} x{group.count}  ({group.value})` })
 	end
 	return rows
 end
@@ -101,6 +102,7 @@ function MarketUI.start()
 
 	local modal = ListModal.create("Market")
 	local function rebuild(snapshot: GardenState.Snapshot)
+		modal.setTitle(`Market   {snapshot.coins} coins`)
 		modal.setRows(rowsFor(snapshot, sellAll, buy))
 	end
 	GardenState.onChanged(function(snapshot)
@@ -152,12 +154,16 @@ function MarketUI.start()
 
 	gui.Parent = player:WaitForChild("PlayerGui")
 
-	GardenState.onChanged(function(snapshot)
+	-- The tutorial steps that need the Market light up its button (the one accent colour on screen).
+	local function render(snapshot: GardenState.Snapshot)
 		coins.Text = `Coins: {snapshot.coins}`
-	end)
+		local needed = snapshot.tutorialStep == Tutorial.Steps.Sell or snapshot.tutorialStep == Tutorial.Steps.Buy
+		market.BackgroundColor3 = if needed then Palette.Base.Torii else Palette.Base.Sumi
+	end
+	GardenState.onChanged(render)
 	local first = GardenState.get()
 	if first then
-		coins.Text = `Coins: {first.coins}`
+		render(first)
 	end
 
 	market.Activated:Connect(function()

@@ -5,6 +5,8 @@ return function(loader, expect)
 	local Seeds = loader.require("src/shared/Garden/Seeds")
 	local PlayerData = loader.require("src/shared/Data/PlayerData")
 	local SessionLock = loader.require("src/shared/Data/SessionLock")
+	local Tutorial = loader.require("src/shared/Garden/Tutorial")
+	local Strings = loader.require("src/shared/Strings")
 
 	local function constant(v: number)
 		return function()
@@ -151,6 +153,77 @@ return function(loader, expect)
 			function()
 				expect(SessionLock.heldByOther({ lock = "x" }, "me", 1)).toBe(false)
 				expect(SessionLock.heldByOther({ lock = { jobId = 5 } }, "me", 1)).toBe(false)
+			end,
+		},
+		{
+			"the tutorial moves forward only on the event the step waits for",
+			function()
+				expect(Tutorial.advance(1, "plant")).toBe(2)
+				expect(Tutorial.advance(1, "sell")).toBe(1)
+				expect(Tutorial.advance(2, "plant")).toBe(2)
+				expect(Tutorial.advance(5, "buy")).toBe(Tutorial.Done)
+				expect(Tutorial.advance(Tutorial.Done, "buy")).toBe(Tutorial.Done)
+			end,
+		},
+		{
+			"one full lap of the loop finishes the tutorial",
+			function()
+				local step = 1
+				for _, event in { "plant", "tend", "harvest", "sell", "buy" } do
+					expect(Tutorial.isActive(step)).toBe(true)
+					step = Tutorial.advance(step, event)
+				end
+				expect(step).toBe(Tutorial.Done)
+				expect(Tutorial.isActive(step)).toBe(false)
+			end,
+		},
+		{
+			"new players start the tutorial, players with progress skip it",
+			function()
+				expect(PlayerData.new().tutorialStep).toBe(1)
+				expect(PlayerData.sanitize(nil).tutorialStep).toBe(1)
+				-- data saved before the tutorial existed
+				expect(PlayerData.sanitize({ coins = 10 }).tutorialStep).toBe(Tutorial.Done)
+				expect(PlayerData.sanitize({ stats = { harvests = 3 } }).tutorialStep).toBe(Tutorial.Done)
+				expect(PlayerData.sanitize({ plots = { ["1"] = { seedId = "seed_sakura" } } }).tutorialStep).toBe(
+					Tutorial.Done
+				)
+			end,
+		},
+		{
+			"a saved tutorial step is kept and kept in range",
+			function()
+				expect(PlayerData.sanitize({ tutorialStep = 3 }).tutorialStep).toBe(3)
+				expect(PlayerData.sanitize({ tutorialStep = 99 }).tutorialStep).toBe(Tutorial.Done)
+				expect(PlayerData.sanitize({ tutorialStep = -4 }).tutorialStep).toBe(1)
+			end,
+		},
+		{
+			"strings fall back to English and then to the key",
+			function()
+				expect(Strings.get("tutorial_skip", "ja")).toBe("スキップ")
+				expect(Strings.get("tutorial_skip", "fr")).toBe("Skip")
+				expect(Strings.get("no_such_key", "ja")).toBe("no_such_key")
+				expect(Strings.langFromLocale("ja-jp")).toBe("ja")
+				expect(Strings.langFromLocale("en-us")).toBe("en")
+			end,
+		},
+		{
+			"every tutorial step has text in both languages",
+			function()
+				for _, key in
+					{
+						"tutorial_plant",
+						"tutorial_tend",
+						"tutorial_harvest",
+						"tutorial_sell",
+						"tutorial_buy",
+						"tutorial_done",
+					}
+				do
+					expect(Strings.get(key, "en") ~= key).toBeTruthy()
+					expect(Strings.get(key, "ja") ~= Strings.get(key, "en")).toBeTruthy()
+				end
 			end,
 		},
 	}

@@ -24,7 +24,7 @@ export type Modal = {
 	setRows: (rows: { Row }) -> (),
 }
 
-local ROW_HEIGHT = 56
+local ROW_HEIGHT = 52
 
 local function make(className: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(className)

@@ -5,6 +5,7 @@
 
 local Growth = require(script.Parent.Parent.Garden.Growth)
 local Seeds = require(script.Parent.Parent.Garden.Seeds)
+local Tutorial = require(script.Parent.Parent.Garden.Tutorial)
 
 export type Fruit = {
 	seedId: string,
@@ -20,6 +21,7 @@ export type Data = {
 	fruits: { Fruit },
 	settings: { latencyMs: number },
 	stats: { tends: number, perfects: number, harvests: number },
+	tutorialStep: number, -- 1..5 = in the tutorial, Tutorial.Done = finished or skipped
 }
 
 local PlayerData = {}
@@ -44,6 +46,7 @@ function PlayerData.new(): Data
 		fruits = {},
 		settings = { latencyMs = 0 },
 		stats = { tends = 0, perfects = 0, harvests = 0 },
+		tutorialStep = 1,
 	}
 end
 
@@ -117,6 +120,14 @@ function PlayerData.sanitize(raw: any): Data
 		data.stats.tends = math.floor(num(raw.stats.tends, 0, 0))
 		data.stats.perfects = math.floor(num(raw.stats.perfects, 0, 0))
 		data.stats.harvests = math.floor(num(raw.stats.harvests, 0, 0))
+	end
+
+	-- Data saved before the tutorial existed: anyone who already has progress skips it.
+	local hasProgress = next(data.plots) ~= nil or data.coins > 0 or data.stats.harvests > 0
+	if type(raw.tutorialStep) == "number" then
+		data.tutorialStep = math.floor(num(raw.tutorialStep, 1, 1, Tutorial.Done))
+	elseif hasProgress then
+		data.tutorialStep = Tutorial.Done
 	end
 
 	return data

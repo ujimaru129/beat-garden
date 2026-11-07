@@ -17,6 +17,7 @@ export type Snapshot = {
 	plot: { seedId: string, fraction: number, stage: string }?,
 	settings: { latencyMs: number },
 	persistent: boolean,
+	tutorialStep: number,
 }
 
 local current: Snapshot? = nil

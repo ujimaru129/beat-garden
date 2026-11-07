@@ -14,12 +14,14 @@ local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local RhythmRunner = require(script.RhythmRunner)
 local TendFlow = require(script.TendFlow)
+local TutorialUI = require(script.TutorialUI)
 
 local player = Players.LocalPlayer :: Player
 
 -- Garden data from the server, then the screens that use it.
 GardenState.start()
 MarketUI.start()
+TutorialUI.start()
 
 -- The plant prompt (tap, or E on keyboard): plant a seed, Tend it, or harvest it.
 TendFlow.start()
@@ -66,6 +68,11 @@ if RunService:IsStudio() then
 		[Enum.KeyCode.Three] = "Hard",
 	}
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		-- 0 = wipe this player's data and replay the tutorial
+		if not gameProcessed and input.KeyCode == Enum.KeyCode.Zero then
+			print("[BeatGarden] reset:", GardenState.call("devReset").ok)
+			return
+		end
 		local chartName = CHART_KEYS[input.KeyCode]
 		if gameProcessed or not chartName or RhythmRunner.isRunning() or calibrator.isOpen() then
 			return
@@ -83,7 +90,7 @@ if RunService:IsStudio() then
 			)
 		end)
 	end)
-	print("[BeatGarden] dev shortcuts: press 1 / 2 / 3 to try a chart")
+	print("[BeatGarden] dev shortcuts: 1 / 2 / 3 try a chart, 0 resets your data (replays the tutorial)")
 end
 
 print("[BeatGarden] client started")

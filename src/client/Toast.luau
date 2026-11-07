@@ -25,8 +25,8 @@ local function ensure(): TextLabel
 
 	local l = Instance.new("TextLabel")
 	l.AnchorPoint = Vector2.new(0.5, 0.5)
-	-- Above the modals (they start lower) and clear of the Roblox menu buttons at the top left.
-	l.Position = UDim2.fromScale(0.5, 0.14)
+	-- Below the tutorial banner (top centre) and clear of the Roblox menu buttons at the top left.
+	l.Position = UDim2.fromScale(0.5, 0.28)
 	l.Size = UDim2.fromScale(0.5, 0.16)
 	l.BackgroundColor3 = Palette.Base.YoruSky
 	l.BackgroundTransparency = 0.2
@@ -37,7 +37,7 @@ local function ensure(): TextLabel
 	l.Parent = gui
 	local size = Instance.new("UISizeConstraint")
 	size.MaxSize = Vector2.new(640, 90)
-	size.MinSize = Vector2.new(0, 56)
+	size.MinSize = Vector2.new(0, 50)
 	size.Parent = l
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 12)

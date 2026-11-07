@@ -22,13 +22,17 @@ local PlayerStore = require(script.Parent.PlayerStore)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local TestCharts = require(ReplicatedStorage.Shared.Dev.TestCharts)
+local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
 local Garden = {}
 
 local PLOT_KEY = "1" -- one plot for now (Extra Plot adds more keys)
 local PLOT_SPACING = 14 -- studs between neighbouring plots
 local PLOT_DISTANCE = 10 -- studs from the spawn
-local TEND_RANGE = 24 -- the prompt works within ~12 studs; the server allows some lag on top
+-- The spawn pad is 12 studs wide and players appear anywhere on it, so the prompt must reach from the
+-- far corner. The server allows some extra distance on top for lag.
+local PROMPT_RANGE = 20
+local TEND_RANGE = 32
 local AUTOSAVE_SECONDS = 60
 
 -- Short cooldown in Studio so it can be tried repeatedly.
@@ -73,6 +77,11 @@ local function fractionOf(plot: Growth.Plot, now: number): number
 	return Growth.fraction(plot, seedOf(plot).growSeconds, now)
 end
 
+local function advanceTutorial(s: Session, event: Tutorial.Event)
+	local d = data(s)
+	d.tutorialStep = Tutorial.advance(d.tutorialStep, event)
+end
+
 -- What the owner's client needs to draw the HUD and the market.
 local function snapshot(s: Session): any
 	local d = data(s)
@@ -99,6 +108,7 @@ local function snapshot(s: Session): any
 		plot = plotInfo,
 		settings = { latencyMs = d.settings.latencyMs },
 		persistent = s.store.persistent,
+		tutorialStep = d.tutorialStep,
 	}
 end
 
@@ -178,7 +188,7 @@ local function buildPlotParts(player: Player, slot: number, container: Instance)
 	prompt.ActionText = "Tend"
 	prompt.ObjectText = `{player.DisplayName}'s plant`
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 12
+	prompt.MaxActivationDistance = PROMPT_RANGE
 	prompt.RequiresLineOfSight = false
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.UIOffset = Vector2.new(0, -90) -- lift the button off the bottom edge of a phone screen
@@ -256,6 +266,11 @@ local function tendSubmit(s: Session, payload: unknown): any
 	local now = os.time()
 	Growth.applyTend(plot, points, tally.maxPerfectStreak, mutationMult, now)
 	local d = data(s)
+	if d.tutorialStep == Tutorial.Steps.Tend then
+		-- Tutorial: the first tend always finishes the plant, so the player can harvest right away.
+		plot.careGauge = math.max(plot.careGauge, seedOf(plot).growSeconds)
+	end
+	advanceTutorial(s, "tend")
 	d.stats.tends += 1
 	d.stats.perfects += tally.counts.Perfect
 	refresh(s)
@@ -300,6 +315,7 @@ local function plant(s: Session, payload: unknown): any
 		d.seeds[payload] = nil
 	end
 	d.plots[PLOT_KEY] = Growth.newPlot(payload, os.time())
+	advanceTutorial(s, "plant")
 	refresh(s)
 	push(s)
 	return { ok = true, seedId = payload }
@@ -326,6 +342,7 @@ local function harvest(s: Session): any
 	table.insert(d.fruits, { seedId = plot.seedId, mutation = mutation, weight = weight })
 	d.stats.harvests += 1
 	d.plots[PLOT_KEY] = nil
+	advanceTutorial(s, "harvest")
 	refresh(s)
 	push(s)
 
@@ -345,6 +362,7 @@ local function buy(s: Session, payload: unknown): any
 	end
 	d.coins -= seed.price
 	d.seeds[seed.seedId] = (d.seeds[seed.seedId] or 0) + 1
+	advanceTutorial(s, "buy")
 	push(s)
 	return { ok = true, seedId = seed.seedId, price = seed.price }
 end
@@ -361,6 +379,7 @@ local function sellAll(s: Session): any
 	local count = #d.fruits
 	d.fruits = {}
 	d.coins += total
+	advanceTutorial(s, "sell")
 	push(s)
 	return { ok = true, total = total, count = count }
 end
@@ -371,6 +390,25 @@ local function setLatency(s: Session, payload: unknown): any
 	end
 	data(s).settings.latencyMs =
 		math.round(math.clamp(payload, PlayerData.LatencyRange.min, PlayerData.LatencyRange.max))
+	return { ok = true }
+end
+
+local function skipTutorial(s: Session): any
+	data(s).tutorialStep = Tutorial.Done
+	push(s)
+	return { ok = true }
+end
+
+-- Studio only: wipes the saved data of the calling player so the tutorial can be replayed.
+local function devReset(s: Session): any
+	if not RunService:IsStudio() then
+		return fail("not available")
+	end
+	s.store.data = PlayerData.new()
+	s.pending = nil
+	refresh(s)
+	push(s)
+	print(`[Garden] {s.player.Name}: data reset (Studio)`)
 	return { ok = true }
 end
 
@@ -449,6 +487,10 @@ function Garden.start()
 			return sellAll(s)
 		elseif action == "setLatency" then
 			return setLatency(s, payload)
+		elseif action == "skipTutorial" then
+			return skipTutorial(s)
+		elseif action == "devReset" then
+			return devReset(s)
 		end
 		return nil
 	end
