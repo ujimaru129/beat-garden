@@ -2,13 +2,14 @@
 -- One short message near the top of the screen (a new message replaces the old one).
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Palette = require(ReplicatedStorage.Shared.Palette)
+local UiTheme = require(script.Parent.UiTheme)
 
 local Toast = {}
 
-local SECONDS = 6
+-- Shown for a short time: 2 s plus a little for longer messages, at most 3.5 s.
+local MIN_SECONDS = 2
+local MAX_SECONDS = 3.5
 
 local label: TextLabel? = nil
 local token = 0
@@ -28,11 +29,7 @@ local function ensure(): TextLabel
 	-- Below the tutorial banner (top centre) and clear of the Roblox menu buttons at the top left.
 	l.Position = UDim2.fromScale(0.5, 0.28)
 	l.Size = UDim2.fromScale(0.5, 0.16)
-	l.BackgroundColor3 = Palette.Base.YoruSky
-	l.BackgroundTransparency = 0.2
-	l.TextColor3 = Palette.Base.Washi
 	l.TextScaled = true
-	l.Font = Enum.Font.GothamBold
 	l.Visible = false
 	l.Parent = gui
 	local size = Instance.new("UISizeConstraint")
@@ -57,9 +54,12 @@ function Toast.show(text: string)
 	local l = ensure()
 	token += 1
 	local mine = token
+	local theme = UiTheme.get()
+	UiTheme.stylePanel(l, theme, 12, false)
+	UiTheme.styleText(l, theme, "body")
 	l.Text = text
 	l.Visible = true
-	task.delay(SECONDS, function()
+	task.delay(math.min(MAX_SECONDS, MIN_SECONDS + #text * 0.03), function()
 		if token == mine then
 			l.Visible = false
 		end

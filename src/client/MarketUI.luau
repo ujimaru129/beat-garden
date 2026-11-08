@@ -15,6 +15,7 @@ local Palette = require(ReplicatedStorage.Shared.Palette)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Toast = require(script.Parent.Toast)
+local UiTheme = require(script.Parent.UiTheme)
 local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
 local MarketUI = {}
@@ -95,21 +96,18 @@ end
 
 local function makeHudButton(gui: ScreenGui, text: string, y: number): TextButton
 	local button = Instance.new("TextButton")
-	button.Position = UDim2.fromOffset(16, y)
+	button.AnchorPoint = Vector2.new(1, 0)
+	button.Position = UDim2.new(1, -16, 0, y)
 	button.Size = UDim2.fromOffset(120, 48)
-	button.BackgroundColor3 = Palette.Base.Sumi
-	button.TextColor3 = Palette.Base.Washi
 	button.TextScaled = true
-	button.Font = Enum.Font.GothamBold
 	button.Text = text
 	button.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 12)
-	corner.Parent = button
-	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0.2, 0)
-	padding.PaddingBottom = UDim.new(0.2, 0)
-	padding.Parent = button
+	local limit = Instance.new("UITextSizeConstraint")
+	limit.MaxTextSize = 24
+	limit.Parent = button
+	UiTheme.watch(function()
+		UiTheme.styleButton(button, UiTheme.get(), "Sora", 12)
+	end)
 	return button
 end
 
@@ -169,32 +167,33 @@ function MarketUI.start()
 	gui.DisplayOrder = 30
 
 	local coins = Instance.new("TextLabel")
-	coins.Position = UDim2.fromOffset(16, 72)
+	coins.AnchorPoint = Vector2.new(1, 0)
+	coins.Position = UDim2.new(1, -16, 0, 72)
 	coins.Size = UDim2.fromOffset(120, 36)
-	coins.BackgroundColor3 = Palette.Base.YoruSky
-	coins.BackgroundTransparency = 0.25
-	coins.TextColor3 = Palette.Hues.Yuzu.Night
 	coins.TextScaled = true
-	coins.Font = Enum.Font.GothamBold
 	coins.Text = "Coins: 0"
 	coins.Parent = gui
-	local coinsCorner = Instance.new("UICorner")
-	coinsCorner.CornerRadius = UDim.new(0, 10)
-	coinsCorner.Parent = coins
-	local coinsPadding = Instance.new("UIPadding")
-	coinsPadding.PaddingTop = UDim.new(0.15, 0)
-	coinsPadding.PaddingBottom = UDim.new(0.15, 0)
-	coinsPadding.Parent = coins
+	local coinsLimit = Instance.new("UITextSizeConstraint")
+	coinsLimit.MaxTextSize = 22
+	coinsLimit.Parent = coins
+	UiTheme.watch(function()
+		local theme = UiTheme.get()
+		UiTheme.stylePanel(coins, theme, 10)
+		UiTheme.styleText(coins, theme, "head")
+		coins.TextColor3 = theme.hue("Yuzu")
+		if not theme.night then
+			coins.TextColor3 = Color3.fromHex("#B8860B")
+		end
+	end)
 
+	UiTheme.hideDuringRun(gui)
 	local shopButton = makeHudButton(gui, "Shop", 116)
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	-- The tutorial step that asks for a purchase lights up the Shop button (the one accent colour).
 	local function render(snapshot: GardenState.Snapshot)
 		coins.Text = `Coins: {snapshot.coins}`
-		shopButton.BackgroundColor3 = if snapshot.tutorialStep == Tutorial.Steps.Buy
-			then Palette.Base.Torii
-			else Palette.Base.Sumi
+		UiTheme.setAccent(shopButton, snapshot.tutorialStep == Tutorial.Steps.Buy)
 		if shop.isOpen() then
 			rebuildShop(snapshot)
 		end

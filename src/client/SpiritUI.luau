@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GardenState = require(script.Parent.GardenState)
 local ListModal = require(script.Parent.ListModal)
 local MarketUI = require(script.Parent.MarketUI)
+local UiTheme = require(script.Parent.UiTheme)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Toast = require(script.Parent.Toast)
@@ -89,6 +90,7 @@ function SpiritUI.start()
 	gui.Name = "SpiritHud"
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 30
+	UiTheme.hideDuringRun(gui)
 	local button = MarketUI.makeHudButton(gui, "Spirits", 172)
 	gui.Parent = player:WaitForChild("PlayerGui")
 

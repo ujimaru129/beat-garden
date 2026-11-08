@@ -13,8 +13,10 @@ local GardenState = require(script.Parent.GardenState)
 local HarvestFx = require(script.Parent.HarvestFx)
 local ListModal = require(script.Parent.ListModal)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
+local ResultScreen = require(script.Parent.ResultScreen)
 local RhythmRunner = require(script.Parent.RhythmRunner)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
+local Songs = require(ReplicatedStorage.Shared.Songs)
 local Toast = require(script.Parent.Toast)
 
 local TendFlow = {}
@@ -33,6 +35,7 @@ function TendFlow.start()
 	local tend: RemoteFunction = remote
 	local player = Players.LocalPlayer :: Player
 	local picking = false
+	local chosenSongId = ""
 
 	-- The prompt button sits over the lane buttons and the pickers, so it is hidden while they are up.
 	local function setPromptsEnabled(enabled: boolean)
@@ -52,7 +55,7 @@ function TendFlow.start()
 
 	local function onPick(difficulty: string)
 		closePicker()
-		local info = tend:InvokeServer("begin", difficulty)
+		local info = tend:InvokeServer("begin", { difficulty = difficulty, songId = chosenSongId })
 		if not (info and info.ok) then
 			setPromptsEnabled(true)
 			Toast.show(`Can't tend now: {if info then info.reason else "no answer"}`)
@@ -67,13 +70,23 @@ function TendFlow.start()
 			difficulty = info.difficulty,
 		}, function(summary)
 			local result = tend:InvokeServer("submit", summary)
-			setPromptsEnabled(true)
 			if result and result.ok then
-				local score = math.floor(summary.accuracy * 1000000 + 0.5)
-				Toast.show(
-					`Score {score}   +{result.points} growth!  {result.stage}  {math.floor(result.fraction * 100)}%`
-				)
+				-- The result screen re-enables the prompts when it is closed.
+				ResultScreen.show({
+					songName = result.songName,
+					difficulty = result.difficulty,
+					rank = result.rank,
+					score = result.score,
+					counts = result.counts,
+					maxCombo = result.maxCombo,
+					points = result.points,
+					stage = result.stage,
+					fraction = result.fraction,
+				}, function()
+					setPromptsEnabled(true)
+				end)
 			else
+				setPromptsEnabled(true)
 				Toast.show(`Run not counted: {if result then result.reason else "no answer"}`)
 			end
 		end)
@@ -85,6 +98,40 @@ function TendFlow.start()
 
 	picker = DifficultyPicker.create(onPick, cancelPicker)
 	picker.setVisible(false)
+
+	-- Song picker (Tend, step 1): the player chooses the song, then the difficulty.
+	local advancing = false
+	local songModal = ListModal.create("Choose a song", function()
+		if advancing then
+			return
+		end
+		picking = false
+		setPromptsEnabled(true)
+	end)
+	local function openSongPicker()
+		local rows: { ListModal.Row } = {}
+		for _, song in Songs.List do
+			local seconds = math.floor(song.durationMs / 1000 + 0.5)
+			table.insert(rows, {
+				text = `{song.name}   {seconds // 60}:{string.format("%02d", seconds % 60)}`,
+				onTap = function()
+					advancing = true
+					songModal.close()
+					advancing = false
+					chosenSongId = song.songId
+					picker.setTitle(
+						song.name,
+						`BPM {math.floor(song.bpm + 0.5)}  -  {seconds // 60}:{string.format("%02d", seconds % 60)}`
+					)
+					picker.setVisible(true)
+				end,
+			})
+		end
+		songModal.setRows(rows)
+		picking = true
+		setPromptsEnabled(false)
+		songModal.open()
+	end
 
 	-- Seed picker (Plant) -------------------------------------------------------------------
 	local seedModal = ListModal.create("Plant a seed", function()
@@ -158,9 +205,7 @@ function TendFlow.start()
 		elseif stage == "Fruit" then
 			harvest(plot)
 		else
-			picking = true
-			setPromptsEnabled(false)
-			picker.setVisible(true)
+			openSongPicker()
 		end
 	end)
 end

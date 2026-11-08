@@ -4,9 +4,8 @@
 -- Prototype look; the final design comes later.
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Palette = require(ReplicatedStorage.Shared.Palette)
+local UiTheme = require(script.Parent.UiTheme)
 
 local ListModal = {}
 
@@ -58,35 +57,37 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 		-- Lower than centre: the Roblox menu buttons sit in the top-left corner and cover anything there.
 		Position = UDim2.fromScale(0.5, 0.6),
 		Size = UDim2.fromScale(0.8, 0.7),
-		BackgroundColor3 = Palette.Base.YoruSky,
 		Active = true, -- swallow taps so they do not reach the backdrop
 	}, backdrop) :: Frame
 	make("UISizeConstraint", { MaxSize = Vector2.new(560, 440) }, panel)
-	make("UICorner", { CornerRadius = UDim.new(0, 16) }, panel)
 
 	local titleLabel = make("TextLabel", {
 		Position = UDim2.fromOffset(16, 8),
 		Size = UDim2.new(1, -80, 0, 44),
 		BackgroundTransparency = 1,
 		Text = title,
-		TextColor3 = Palette.Base.Washi,
 		TextScaled = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Font = Enum.Font.GothamBlack,
 	}, panel) :: TextLabel
 
 	local closeButton = make("TextButton", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -10, 0, 8),
 		Size = UDim2.fromOffset(48, 48),
-		BackgroundColor3 = Palette.Base.Sumi,
 		Text = "X",
-		TextColor3 = Palette.Base.Washi,
 		TextScaled = true,
-		Font = Enum.Font.GothamBlack,
 	}, panel) :: TextButton
-	make("UICorner", { CornerRadius = UDim.new(1, 0) }, closeButton)
-	make("UIPadding", { PaddingTop = UDim.new(0.25, 0), PaddingBottom = UDim.new(0.25, 0) }, closeButton)
+	make("UITextSizeConstraint", { MaxTextSize = 24 }, closeButton)
+
+	-- The look follows the time of day, so it is applied again every time the modal opens.
+	local currentTheme = UiTheme.get()
+	local function restyle()
+		currentTheme = UiTheme.get()
+		UiTheme.stylePanel(panel, currentTheme, 18)
+		UiTheme.styleText(titleLabel, currentTheme, "head")
+		UiTheme.styleButton(closeButton, currentTheme, "Sakura", 24)
+	end
+	restyle()
 
 	local list = make("ScrollingFrame", {
 		Position = UDim2.fromOffset(12, 64),
@@ -106,6 +107,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			return
 		end
 		gui.Enabled = false
+		UiTheme.setBlur("list", false)
 		if onClose then
 			onClose()
 		end
@@ -116,7 +118,9 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 
 	modal = {
 		open = function()
+			restyle()
 			gui.Enabled = true
+			UiTheme.setBlur("list", true)
 		end,
 		close = close,
 		isOpen = function()
@@ -126,6 +130,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			titleLabel.Text = text
 		end,
 		setRows = function(rows: { Row })
+			currentTheme = UiTheme.get() -- the time of day may have changed since the modal was created
 			for _, child in list:GetChildren() do
 				if child:IsA("GuiObject") then
 					child:Destroy()
@@ -136,18 +141,23 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				local button = make("TextButton", {
 					LayoutOrder = i,
 					Size = UDim2.new(1, -8, 0, ROW_HEIGHT),
-					BackgroundColor3 = row.color
-						or (if tappable then Palette.Hues.Sora.Night else Palette.Base.YoruGround),
-					BackgroundTransparency = if tappable then 0.2 else 0.3,
 					AutoButtonColor = tappable,
 					Active = tappable,
 					Text = row.text,
-					TextColor3 = if tappable then Palette.Base.YoruSky else Palette.Base.Washi,
 					TextScaled = true,
-					Font = if tappable then Enum.Font.GothamBold else Enum.Font.Gotham,
 					TextXAlignment = Enum.TextXAlignment.Left,
 				}, list) :: TextButton
-				make("UICorner", { CornerRadius = UDim.new(0, 12) }, button)
+				-- Rows that cannot be tapped are quiet text; tappable ones are neon / candy buttons.
+				if tappable then
+					UiTheme.styleButton(button, currentTheme, "Sora", 12, false)
+				else
+					button.BackgroundTransparency = 1
+					UiTheme.styleText(button, currentTheme, "body")
+				end
+				button.TextXAlignment = Enum.TextXAlignment.Left
+				if row.color and currentTheme.night then
+					button.TextColor3 = row.color
+				end
 				make("UIPadding", {
 					PaddingTop = UDim.new(0.22, 0),
 					PaddingBottom = UDim.new(0.22, 0),

@@ -36,6 +36,7 @@ function RhythmRunner.play(run: Run, onFinished: (summary: RhythmEngine.Summary)
 	running = true
 	local player = Players.LocalPlayer :: Player
 	local clock: SongClock.Clock? = nil
+	player:SetAttribute("InRhythm", true)
 	local options: RhythmOverlay.Options = {
 		latencyMs = tonumber(player:GetAttribute("LatencyMs")) or 0,
 		chartOffsetMs = run.offsetMs,
@@ -45,6 +46,7 @@ function RhythmRunner.play(run: Run, onFinished: (summary: RhythmEngine.Summary)
 		metronome = true,
 		onFinished = function(summary)
 			running = false
+			player:SetAttribute("InRhythm", nil)
 			if clock then
 				clock.stop()
 			end

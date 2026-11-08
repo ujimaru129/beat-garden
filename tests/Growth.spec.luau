@@ -38,9 +38,9 @@ return function(loader, expect)
 				local easy = Growth.tendPoints(0.8, "Easy")
 				local normal = Growth.tendPoints(0.8, "Normal")
 				local hard = Growth.tendPoints(0.8, "Hard")
-				expect(easy).toBe(48)
-				expect(normal).toBe(60)
-				expect(hard).toBe(72)
+				expect(easy).toBe(120)
+				expect(normal).toBe(150)
+				expect(hard).toBe(180)
 			end,
 		},
 		{
@@ -48,15 +48,15 @@ return function(loader, expect)
 			function()
 				expect(Growth.tendPoints(0.1, "Easy") > 0).toBeTruthy()
 				expect(Growth.tendPoints(0, "Hard")).toBe(0)
-				expect(Growth.tendPoints(5, "Easy")).toBe(Growth.MaxTendPoints)
+				expect(Growth.tendPoints(5, "Easy")).toBe(math.round(Growth.MaxTendPoints * 1.2)) -- S rank bonus
 			end,
 		},
 		{
 			"cooldown counts down from the last tend",
 			function()
 				expect(Growth.cooldownLeft(plot(0, 0, 0), 500)).toBe(0)
-				expect(Growth.cooldownLeft(plot(0, 0, 1000), 1020)).toBe(40)
-				expect(Growth.cooldownLeft(plot(0, 0, 1000), 1060)).toBe(0)
+				expect(Growth.cooldownLeft(plot(0, 0, 1000), 1020)).toBe(10)
+				expect(Growth.cooldownLeft(plot(0, 0, 1000), 1030)).toBe(0)
 				expect(Growth.cooldownLeft(plot(0, 0, 1000), 1004, 10)).toBe(6)
 			end,
 		},

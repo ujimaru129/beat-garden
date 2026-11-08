@@ -11,6 +11,7 @@ local GardenState = require(script.Parent.GardenState)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Strings = require(ReplicatedStorage.Shared.Strings)
 local Toast = require(script.Parent.Toast)
+local UiTheme = require(script.Parent.UiTheme)
 local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
 local TutorialUI = {}
@@ -84,6 +85,7 @@ function TutorialUI.start()
 	skipPadding.PaddingBottom = UDim.new(0.2, 0)
 	skipPadding.Parent = skip
 
+	UiTheme.hideDuringRun(gui) -- the banner would cover the judgement text during a run
 	gui.Parent = (Players.LocalPlayer :: Player):WaitForChild("PlayerGui")
 
 	skip.Activated:Connect(function()

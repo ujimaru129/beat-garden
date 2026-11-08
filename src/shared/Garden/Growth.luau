@@ -6,6 +6,7 @@
 -- growSeconds = 600 is fully grown after 600 seconds of time + care combined.
 
 local Difficulty = require(script.Parent.Parent.Difficulty)
+local Rank = require(script.Parent.Parent.Rank)
 
 export type Stage = "Seed" | "Sprout" | "Sapling" | "Bloom" | "Fruit"
 
@@ -30,11 +31,13 @@ local stages: { { name: Stage, from: number } } = {
 }
 Growth.Stages = table.freeze(stages)
 
--- Growth seconds a perfect Easy tend is worth. Other difficulties scale it (Difficulty.GrowthMultiplier).
-Growth.MaxTendPoints = 60
+-- Growth seconds a perfect Easy tend is worth. Other difficulties scale it (Difficulty.GrowthMultiplier),
+-- and an S / A rank adds a bonus (Rank.GrowthBonus). A run lasts about 90 s, so this is worth more than
+-- the time it takes; the cooldown below keeps tending from being the only way to grow.
+Growth.MaxTendPoints = 150
 
 -- The same plant cannot be tended again for this long.
-Growth.TendCooldownSeconds = 60
+Growth.TendCooldownSeconds = 30
 
 function Growth.newPlot(seedId: string, now: number): Plot
 	return { seedId = seedId, plantedAt = now, careGauge = 0, lastTendAt = 0, bestPerfectStreak = 0, mutationMult = 1 }
@@ -72,7 +75,8 @@ end
 -- Growth seconds earned by one tend. `accuracy` is the server-verified 0..1 value from the tally.
 function Growth.tendPoints(accuracy: number, difficulty: Difficulty.Name): number
 	local multiplier = Difficulty.GrowthMultiplier[difficulty]
-	return math.round(Growth.MaxTendPoints * math.clamp(accuracy, 0, 1) * multiplier)
+	local bonus = Rank.GrowthBonus[Rank.forAccuracy(accuracy)]
+	return math.round(Growth.MaxTendPoints * math.clamp(accuracy, 0, 1) * multiplier * bonus)
 end
 
 -- Seconds until the plot can be tended again (0 = ready now).

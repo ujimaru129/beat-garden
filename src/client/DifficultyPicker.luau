@@ -7,19 +7,16 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
-local Palette = require(ReplicatedStorage.Shared.Palette)
+local UiTheme = require(script.Parent.UiTheme)
 
 local DifficultyPicker = {}
 
 export type Picker = {
 	setVisible: (visible: boolean) -> (),
+	setTitle: (text: string, subtitle: string?) -> (), -- the chosen song and a small line under it
 }
 
-local COLORS: { [string]: Color3 } = {
-	Easy = Palette.Hues.Matcha.Night,
-	Normal = Palette.Hues.Sora.Night,
-	Hard = Palette.Hues.Sakura.Night,
-}
+local HUES: { [string]: string } = { Easy = "Matcha", Normal = "Sora", Hard = "Sakura" }
 
 local function make(className: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(className)
@@ -42,64 +39,99 @@ function DifficultyPicker.create(onPick: (name: string) -> (), onCancel: (() -> 
 
 	local row = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.fromScale(0.5, 0.96),
-		Size = UDim2.fromScale(0.9, 0.18),
+		Position = UDim2.new(0.5, 0, 1, -18),
+		Size = UDim2.new(0.6, 0, 0, 76),
 		BackgroundTransparency = 1,
 	}, gui)
-	make("UISizeConstraint", { MaxSize = Vector2.new(560, 140), MinSize = Vector2.new(0, 72) }, row)
+	make("UISizeConstraint", { MaxSize = Vector2.new(440, 76), MinSize = Vector2.new(300, 76) }, row)
 	make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
-		Padding = UDim.new(0, 10),
+		Padding = UDim.new(0, 16),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, row)
 
+	local buttons: { [string]: TextButton } = {}
 	for i, name in Difficulty.Names do
 		local button = make("TextButton", {
 			LayoutOrder = i,
-			Size = UDim2.new(1 / 3, -7, 1, 0),
-			BackgroundColor3 = COLORS[name],
-			BackgroundTransparency = 0.15,
+			Size = UDim2.new(1 / 3, -11, 1, 0),
 			AutoButtonColor = true,
 			Text = name,
-			TextColor3 = Palette.Base.YoruSky,
 			TextScaled = true,
-			Font = Enum.Font.GothamBlack,
 		}, row) :: TextButton
-		make("UICorner", { CornerRadius = UDim.new(0, 14) }, button)
-		make("UIPadding", {
-			PaddingTop = UDim.new(0.25, 0),
-			PaddingBottom = UDim.new(0.25, 0),
-			PaddingLeft = UDim.new(0.08, 0),
-			PaddingRight = UDim.new(0.08, 0),
-		}, button)
+		make("UITextSizeConstraint", { MaxTextSize = 24 }, button)
+		buttons[name] = button
 		-- Activated fires for touch, mouse click and gamepad select.
 		button.Activated:Connect(function()
 			onPick(name)
 		end)
 	end
 
+	local cancelButton: TextButton? = nil
 	if onCancel then
 		local cancel = make("TextButton", {
 			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 0.78, -10),
-			Size = UDim2.fromOffset(120, 44),
-			BackgroundColor3 = Palette.Base.Sumi,
-			BackgroundTransparency = 0.1,
+			Position = UDim2.new(0.5, 0, 1, -106),
+			Size = UDim2.fromOffset(110, 40),
 			Text = "Cancel",
-			TextColor3 = Palette.Base.Washi,
 			TextScaled = true,
-			Font = Enum.Font.GothamBold,
 		}, gui) :: TextButton
-		make("UICorner", { CornerRadius = UDim.new(0, 12) }, cancel)
-		make("UIPadding", { PaddingTop = UDim.new(0.2, 0), PaddingBottom = UDim.new(0.2, 0) }, cancel)
+		make("UITextSizeConstraint", { MaxTextSize = 24 }, cancel)
+		cancelButton = cancel
 		cancel.Activated:Connect(onCancel)
 	end
+
+	-- The chosen song: a glass card above the buttons with the name big and a small line under it.
+	local titlePanel = make("Frame", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -158),
+		Size = UDim2.new(0.6, 0, 0, 64),
+	}, gui) :: Frame
+	make("UISizeConstraint", { MaxSize = Vector2.new(440, 64), MinSize = Vector2.new(300, 64) }, titlePanel)
+	local titleLabel = make("TextLabel", {
+		Position = UDim2.fromOffset(16, 7),
+		Size = UDim2.new(1, -32, 0, 30),
+		BackgroundTransparency = 1,
+		Text = "",
+		TextScaled = true,
+	}, titlePanel) :: TextLabel
+	local subLabel = make("TextLabel", {
+		Position = UDim2.fromOffset(16, 39),
+		Size = UDim2.new(1, -32, 0, 16),
+		BackgroundTransparency = 1,
+		Text = "",
+		TextScaled = true,
+	}, titlePanel) :: TextLabel
+
+	-- The look follows the time of day, so it is applied again every time the picker is shown.
+	local function restyle()
+		local theme = UiTheme.get()
+		for name, button in buttons do
+			UiTheme.styleButton(button, theme, HUES[name])
+		end
+		if cancelButton then
+			UiTheme.styleButton(cancelButton, theme, "Fuji", 12)
+		end
+		UiTheme.stylePanel(titlePanel, theme, 18)
+		UiTheme.styleText(titleLabel, theme, "head")
+		UiTheme.styleText(subLabel, theme, "body")
+		subLabel.TextTransparency = 0.25
+	end
+	restyle()
 
 	gui.Parent = (Players.LocalPlayer :: Player):WaitForChild("PlayerGui")
 
 	return {
+		setTitle = function(text: string, subtitle: string?)
+			titleLabel.Text = `♪  {text}`
+			subLabel.Text = subtitle or ""
+		end,
 		setVisible = function(visible: boolean)
+			if visible then
+				restyle()
+			end
 			gui.Enabled = visible
+			UiTheme.setBlur("difficulty", visible)
 		end,
 	}
 end

@@ -26,7 +26,7 @@ local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Trading = require(script.Parent.Trading)
 local Songs = require(ReplicatedStorage.Shared.Songs)
-local TestCharts = require(ReplicatedStorage.Shared.Dev.TestCharts)
+local Rank = require(ReplicatedStorage.Shared.Rank)
 local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
 local Garden = {}
@@ -51,7 +51,12 @@ local STAGE_LOOK: { [string]: { size: number, color: Color3 } } = {
 	Fruit = { size = 5, color = Palette.Hues.Yuzu.Night },
 }
 
-type Pending = { segment: RhythmEngine.Segment, startedAt: number, difficulty: Difficulty.Name }
+type Pending = {
+	segment: RhythmEngine.Segment,
+	startedAt: number,
+	difficulty: Difficulty.Name,
+	songName: string,
+}
 
 type Session = {
 	player: Player,
@@ -134,7 +139,25 @@ local function snapshot(s: Session): any
 	}
 end
 
+-- Never leave a player with nothing to play: no plant, no seeds, no fruit and too few coins for the
+-- cheapest seed would be a dead end, so the starter seed is given again.
+local function rescueIfStuck(s: Session)
+	local d = data(s)
+	if plotOf(s) or next(d.seeds) ~= nil or #d.fruits > 0 then
+		return
+	end
+	local cheapest = math.huge
+	for _, seed in Seeds.List do
+		cheapest = math.min(cheapest, seed.price)
+	end
+	if d.coins < cheapest then
+		d.seeds[Seeds.StarterSeedId] = 1
+		print(`[Garden] {s.player.Name}: stuck without seeds or coins, gave a starter seed`)
+	end
+end
+
 local function push(s: Session)
+	rescueIfStuck(s)
 	updateEvent:FireClient(s.player, snapshot(s))
 end
 
@@ -238,10 +261,18 @@ end
 -- Tend (the rhythm run)
 
 local function tendBegin(s: Session, payload: unknown): any
-	if type(payload) ~= "string" or table.find(Difficulty.Names, payload) == nil then
+	-- payload = { difficulty = "Easy" | "Normal" | "Hard", songId = "..." }
+	if type(payload) ~= "table" then
+		return fail("bad request")
+	end
+	local request = payload :: { difficulty: unknown, songId: unknown }
+	if type(request.difficulty) ~= "string" or table.find(Difficulty.Names, request.difficulty) == nil then
 		return fail("bad difficulty")
 	end
-	local difficulty = payload :: Difficulty.Name
+	local difficulty: Difficulty.Name = request.difficulty :: any
+	if type(request.songId) ~= "string" or Songs.get(request.songId) == nil then
+		return fail("unknown song")
+	end
 	local plot = plotOf(s)
 	if not plot then
 		return fail("nothing planted")
@@ -258,22 +289,25 @@ local function tendBegin(s: Session, payload: unknown): any
 		return { ok = false, reason = `rest a little more ({wait}s)`, cooldown = wait }
 	end
 
-	-- A random segment of the seed's song; seeds without a song use the built-in test charts.
-	local songId = seedOf(plot).songId
-	local picked = if songId then Songs.pick(songId, difficulty) else nil
-	local segment = if picked then picked.segment else (TestCharts :: any)[difficulty] :: RhythmEngine.Segment
-	local pending = (
-		{ segment = segment, startedAt = os.clock(), difficulty = difficulty :: Difficulty.Name } :: any
-	) :: Pending
-	s.pending = pending
+	-- The song the player chose; the chart is the whole short edit at the chosen difficulty.
+	local picked = Songs.pick(request.songId :: string, difficulty)
+	if not picked then
+		return fail("unknown song")
+	end
+	s.pending = {
+		segment = picked.segment,
+		startedAt = os.clock(),
+		difficulty = difficulty,
+		songName = picked.name,
+	}
 	return {
 		ok = true,
-		segment = segment,
-		bpm = if picked then picked.bpm else TestCharts.Bpm[difficulty],
-		beatsMs = if picked then picked.beatsMs else nil,
-		songName = if picked then picked.name else nil,
-		audioAssetId = if picked then picked.audioAssetId else nil,
-		offsetMs = if picked then picked.offsetMs else nil,
+		segment = picked.segment,
+		bpm = picked.bpm,
+		beatsMs = picked.beatsMs,
+		songName = picked.name,
+		audioAssetId = picked.audioAssetId,
+		offsetMs = picked.offsetMs,
 		difficulty = difficulty,
 	}
 end
@@ -320,6 +354,9 @@ local function tendSubmit(s: Session, payload: unknown): any
 		stage = Growth.stageFor(fraction),
 		fraction = fraction,
 		cooldown = COOLDOWN_SECONDS,
+		songName = pending.songName,
+		rank = Rank.forAccuracy(tally.accuracy),
+		score = Rank.score(tally.accuracy),
 		counts = tally.counts,
 		maxCombo = tally.maxCombo,
 		accuracy = tally.accuracy,

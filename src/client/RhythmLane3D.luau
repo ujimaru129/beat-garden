@@ -8,12 +8,14 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local RhythmOverlay = require(script.Parent.RhythmOverlay)
+local UiTheme = require(script.Parent.UiTheme)
 
 local RhythmLane3D = {}
 
@@ -35,6 +37,9 @@ local SHAPE_GLYPHS = { Circle = "●", Triangle = "▲", Square = "■", Diamond
 local SCROLL_MS = 1500 -- how long a note is visible before reaching the hit line
 local LANE_WIDTH = 4.5 -- studs (wide, so the lanes fill a landscape phone screen)
 local NOTE_SCALE = LANE_WIDTH / 3 -- note pieces were drawn for 3-stud lanes
+local TRI_BASE = 2.4 -- triangle note size, in the drawing size above
+local TRI_SLABS = 14 -- slabs a triangle note is built from
+local TRI_SIZE = 1.2 -- the triangle is drawn this much bigger than the other shapes' base, so it looks as large
 local LANE_LENGTH = 40 -- studs from the hit line to where notes appear
 local HIT_AHEAD = 7 -- studs between the character and the hit line
 local CHARACTER_FADE = 0.6 -- the character stands near the hit line, so it is drawn faint during a run
@@ -99,18 +104,36 @@ end
 
 -- A note piece. Shapes differ per lane so lanes are not told apart by colour alone.
 local function makeNotePart(lane: number, parent: Instance): BasePart
-	local color = laneColor(lane)
+	local day = not UiTheme.get().night
+	-- The notes are plain (not glowing) so their outline stays crisp: by day deep and saturated against the
+	-- pastel floor, by night bright and saturated, lit by the board light (see "BoardLight" in play).
+	local color = if day then laneColor(lane):Lerp(Color3.new(0, 0, 0), 0.38) else laneColor(lane)
 	local shape = laneShape(lane)
 	local props = solidProps(color)
-	props.Material = Enum.Material.Neon
+	props.Material = Enum.Material.SmoothPlastic
 	props.Transparency = 1
 	if shape == "Circle" then
 		props.Shape = Enum.PartType.Cylinder
 		props.Size = Vector3.new(0.6, 2.4, 2.4) * NOTE_SCALE
 		return make("Part", props, parent)
 	elseif shape == "Triangle" then
-		props.Size = Vector3.new(0.6, 2.4, 2.4) * NOTE_SCALE
-		return make("WedgePart", props, parent)
+		-- The triangle note is a stack of thin slabs, narrow at the apex (towards the far end of the lane) and
+		-- wide at the base: real geometry, so it does not shimmer like a texture would. The returned part is a
+		-- tiny invisible anchor; the slabs are its children and are moved with it (see moveNote).
+		local anchor = make("Part", props, parent)
+		anchor.Size = Vector3.new(0.2, 0.2, 0.2)
+		anchor:SetAttribute("Triangle", true)
+		local width = TRI_BASE * TRI_SIZE * NOTE_SCALE
+		local height = width * 0.866
+		for k = 0, TRI_SLABS - 1 do
+			local slab = solidProps(color)
+			slab.Name = "Slab"
+			slab.Material = props.Material
+			slab.Transparency = 1
+			slab.Size = Vector3.new(width * (k + 0.5) / TRI_SLABS, 0.6 * NOTE_SCALE, height / TRI_SLABS + 0.02)
+			make("Part", slab, anchor)
+		end
+		return anchor
 	elseif shape == "Diamond" then
 		props.Size = Vector3.new(1.8, 0.6, 1.8) * NOTE_SCALE
 		return make("Part", props, parent)
@@ -123,12 +146,48 @@ end
 local function noteCFrame(origin: CFrame, lane: number, z: number): CFrame
 	local base = origin * CFrame.new(laneX(lane), 0.6, z)
 	local shape = laneShape(lane)
-	if shape == "Circle" or shape == "Triangle" then
+	if shape == "Circle" then
 		return base * CFrame.Angles(0, 0, math.rad(90))
 	elseif shape == "Diamond" then
 		return base * CFrame.Angles(0, math.rad(45), 0)
 	end
 	return base
+end
+
+-- Shows / hides a note piece (a triangle note is a stack of slabs under an invisible anchor).
+local function setNoteTransparency(part: BasePart, value: number)
+	if part:GetAttribute("Triangle") then
+		for _, slab in part:GetChildren() do
+			if slab:IsA("BasePart") then
+				slab.Transparency = value
+			end
+		end
+		return
+	end
+	part.Transparency = value
+end
+
+-- Moves a note piece; a triangle's slabs follow its anchor (apex towards -Z, the far end of the lane).
+local function moveNote(part: BasePart, cframe: CFrame)
+	part.CFrame = cframe
+	if part:GetAttribute("Triangle") then
+		local width = TRI_BASE * TRI_SIZE * NOTE_SCALE
+		local height = width * 0.866
+		for k, slab in part:GetChildren() do
+			if slab:IsA("BasePart") then
+				local z = -height / 2 + (k - 0.5) * height / TRI_SLABS
+				-- Each slab sits a hair higher than the one before: slabs overlap slightly, and two surfaces at the
+				-- same height would flicker against each other.
+				slab.CFrame = cframe * CFrame.new(0, k * 0.012, z)
+			end
+		end
+	end
+end
+
+local function withCommas(n: number): string
+	local text = tostring(math.floor(n))
+	local out = text:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	return (out:gsub("^,", ""))
 end
 
 -- Plays one segment. Returns a function that aborts the run early.
@@ -148,6 +207,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			return (os.clock() - clockStart) * 1000 + firstNoteMs - leadIn
 		end
 
+	local dayLook = not UiTheme.get().night
 	local origin = boardOrigin()
 	local folder = make("Folder", { Name = "RhythmLane3D" }, Workspace)
 
@@ -155,13 +215,38 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	local pads: { BasePart } = {}
 	for lane = 0, 3 do
 		local color = laneColor(lane)
-		local strip = solidProps(Palette.Base.YoruGround)
-		strip.Name = `Lane{lane}`
-		strip.Size = Vector3.new(LANE_WIDTH - 0.15, 0.2, LANE_LENGTH + 6)
-		strip.CFrame = origin * CFrame.new(laneX(lane), 0.1, -LANE_LENGTH / 2 + 3)
-		strip.Material = Enum.Material.SmoothPlastic
-		strip.Transparency = 0.15
-		make("Part", strip, folder)
+		-- The lane floor: tinted glass in the lane's colour (pastel by day, deep neon-tinted by night), made of
+		-- slices that get more see-through towards the far end, so the lane fades away into the distance.
+		local hueName = Palette.LaneOrder[lane + 1]
+		local floorColor = if dayLook
+			then Palette.hue(hueName, "Day"):Lerp(Palette.hue(hueName, "Night"), 0.55):Lerp(Color3.new(0, 0, 0), 0.2)
+			else color:Lerp(Color3.new(0, 0, 0), 0.8)
+		local slices = 8
+		local sliceLength = (LANE_LENGTH + 6) / slices
+		for k = 0, slices - 1 do
+			local zCenter = 6 - sliceLength * (k + 0.5)
+			local far = math.clamp(-zCenter / LANE_LENGTH, 0, 1)
+			local slice = solidProps(floorColor)
+			slice.Name = `Lane{lane}_{k}`
+			slice.Size = Vector3.new(LANE_WIDTH - 0.15, 0.2, sliceLength + 0.02)
+			slice.CFrame = origin * CFrame.new(laneX(lane), 0.1, zCenter)
+			slice.Material = Enum.Material.SmoothPlastic
+			slice.Transparency = (if dayLook then 0.02 else 0.12) + 0.85 * far ^ 1.6
+			make("Part", slice, folder)
+		end
+
+		-- Rails along both edges of the lane (neon at night, soft glowing pastel by day).
+		local railColor = color
+		for _, side in { -1, 1 } do
+			local rail = solidProps(railColor)
+			rail.Name = `Rail{lane}`
+			rail.Size = Vector3.new(0.16, 0.3, LANE_LENGTH + 6)
+			rail.CFrame = origin
+				* CFrame.new(laneX(lane) + side * (LANE_WIDTH - 0.15 - 0.16) / 2, 0.2, -LANE_LENGTH / 2 + 3)
+			rail.Material = Enum.Material.Neon
+			rail.Transparency = 0.05
+			make("Part", rail, folder)
+		end
 
 		local line = solidProps(color)
 		line.Name = `HitLine{lane}`
@@ -179,11 +264,50 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		pads[lane + 1] = make("Part", pad, folder)
 	end
 
+	-- At night a light above the hit zone lights the notes, so they are bright without a glow smearing them.
+	if not dayLook then
+		local lamp = make("Part", {
+			Name = "BoardLight",
+			Anchored = true,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = false,
+			Transparency = 1,
+			Size = Vector3.new(1, 1, 1),
+			CFrame = origin * CFrame.new(0, 5, -6),
+		}, folder)
+		make("PointLight", { Brightness = 8, Range = 70, Color = Color3.new(1, 1, 1), Shadows = false }, lamp)
+	end
+
 	-- One piece per note, created up front (segments are short).
 	local noteParts: { [number]: BasePart } = {}
 	for _, note in session.notes do
-		noteParts[note.index] = makeNotePart(note.lane, folder)
+		local part = makeNotePart(note.lane, folder)
+		setNoteTransparency(part, 1)
+		noteParts[note.index] = part
 	end
+
+	-- Beat lines: thin lines across the board that scroll down with the music, one per beat.
+	local beatList: { number } = options.beatTimesMs or {}
+	if #beatList == 0 and options.bpm and options.bpm > 0 then
+		local step = 60000 / options.bpm
+		local t = firstNoteMs - 16 * step
+		while t < session.notes[#session.notes].timeMs + step do
+			table.insert(beatList, t)
+			t += step
+		end
+	end
+	local BEAT_POOL = 24
+	local beatParts: { BasePart } = {}
+	for k = 1, BEAT_POOL do
+		local part = solidProps(if dayLook then Color3.new(1, 1, 1) else Palette.Hues.Fuji.Night)
+		part.Name = "BeatLine"
+		part.Size = Vector3.new(LANE_WIDTH * 4 - 0.15, 0.08, 0.1)
+		part.Material = Enum.Material.Neon
+		part.Transparency = 1
+		beatParts[k] = make("Part", part, folder)
+	end
+	local beatLow = 1
 
 	-- Judgement / combo text floating above the hit line.
 	local textAnchor = make("Part", {
@@ -194,37 +318,41 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		CanTouch = false,
 		Transparency = 1,
 		Size = Vector3.new(1, 1, 1),
-		CFrame = origin * CFrame.new(0, 4.5, -4),
+		CFrame = origin * CFrame.new(0, 8, -6),
 	}, folder)
 	local billboard = make("BillboardGui", {
 		Adornee = textAnchor,
 		AlwaysOnTop = true,
-		Size = UDim2.fromOffset(360, 130),
+		Size = UDim2.fromOffset(300, 135),
 		ResetOnSpawn = false,
 	}, textAnchor)
 	local judgementLabel = make("TextLabel", {
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0),
+		Size = UDim2.fromScale(1, 0.42),
 		Text = "",
 		TextScaled = true,
-		Font = Enum.Font.GothamBlack,
+		Font = UiTheme.get().head,
 		TextColor3 = Palette.Base.Washi,
 		TextStrokeTransparency = 0.4,
 	}, billboard) :: TextLabel
 	local comboLabel = make("TextLabel", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0, 0.5),
-		Size = UDim2.fromScale(1, 0.3),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.46),
+		Size = UDim2.fromScale(0.6, 0.22),
 		Text = "",
 		TextScaled = true,
-		Font = Enum.Font.GothamBold,
-		TextColor3 = Palette.Base.Washi,
-		TextStrokeTransparency = 0.5,
+		Font = UiTheme.get().head,
+		TextColor3 = Palette.Hues.Yuzu.Night,
+		TextStrokeTransparency = 0.2,
+		TextStrokeColor3 = Palette.Base.Sumi,
 	}, billboard) :: TextLabel
 	local offsetLabel = make("TextLabel", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0, 0.8),
-		Size = UDim2.fromScale(1, 0.2),
+		Position = UDim2.fromScale(0, 0.82),
+		Size = UDim2.fromScale(1, 0.18),
 		Text = "",
 		TextScaled = true,
 		Font = Enum.Font.Gotham,
@@ -240,18 +368,36 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		IgnoreGuiInset = true,
 		DisplayOrder = 50,
 	}, nil) :: ScreenGui
-	local scoreLabel = make("TextLabel", {
+	local theme = UiTheme.get()
+	-- Score: a small framed panel, the number in the accent colour with a dark outline.
+	local scorePanel = make("Frame", {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 12),
-		Size = UDim2.fromOffset(220, 44),
+		Position = UDim2.new(1, -16, 0, 10),
+		Size = UDim2.fromOffset(190, 60),
+	}, gui) :: Frame
+	UiTheme.stylePanel(scorePanel, theme, 14)
+	local scoreTitle = make("TextLabel", {
+		Position = UDim2.fromOffset(12, 4),
+		Size = UDim2.new(1, -24, 0, 14),
+		BackgroundTransparency = 1,
+		Text = "SCORE",
+		TextScaled = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, scorePanel) :: TextLabel
+	UiTheme.styleText(scoreTitle, theme, "body")
+	scoreTitle.TextTransparency = 0.25
+	local scoreLabel = make("TextLabel", {
+		Position = UDim2.fromOffset(12, 18),
+		Size = UDim2.new(1, -24, 0, 36),
 		BackgroundTransparency = 1,
 		Text = "0",
-		TextXAlignment = Enum.TextXAlignment.Right,
 		TextScaled = true,
-		Font = Enum.Font.GothamBlack,
-		TextColor3 = Palette.Base.Washi,
-		TextStrokeTransparency = 0.4,
-	}, gui) :: TextLabel
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Font = theme.head,
+		TextColor3 = if theme.night then Palette.Hues.Yuzu.Night else Color3.fromHex("#FF4FA3"),
+		TextStrokeColor3 = if theme.night then Palette.Base.YoruSky else Color3.new(1, 1, 1),
+		TextStrokeTransparency = 0,
+	}, scorePanel) :: TextLabel
 	local onTap: (number) -> () = function() end
 	local buttonRow = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 1),
@@ -260,19 +406,18 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		BackgroundTransparency = 1,
 	}, gui)
 	make("UISizeConstraint", { MaxSize = Vector2.new(520, 200) }, buttonRow)
+	local laneButtons: { [number]: TextButton } = {}
 	for lane = 0, 3 do
 		local button = make("TextButton", {
 			Position = UDim2.fromScale(lane / 4, 0),
 			Size = UDim2.new(0.25, -6, 1, 0),
-			BackgroundColor3 = laneColor(lane),
-			BackgroundTransparency = 0.55,
 			AutoButtonColor = false,
 			Text = `{SHAPE_GLYPHS[laneShape(lane)]}\n{KEY_LABELS[lane + 1]}`,
-			TextColor3 = Palette.Base.Washi,
 			TextScaled = true,
-			Font = Enum.Font.GothamBold,
 		}, buttonRow) :: TextButton
-		make("UIPadding", { PaddingTop = UDim.new(0.2, 0), PaddingBottom = UDim.new(0.2, 0) }, button)
+		make("UITextSizeConstraint", { MaxTextSize = 30 }, button)
+		laneButtons[lane] = button
+		UiTheme.styleButton(button, theme, Palette.LaneOrder[lane + 1])
 		button.InputBegan:Connect(function(input: InputObject)
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
@@ -341,18 +486,74 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	local judgementToken = 0
 	local scorePerNote = 1000000 / #session.notes
 	local score = 0.0
+	-- "+N" floats up from the tapped lane and fades out.
+	local function popScore(result: RhythmEngine.HitResult, gained: number)
+		local button = laneButtons[result.lane]
+		if result.judgement == "Miss" or not button then
+			return
+		end
+		local pop = make("TextLabel", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.fromOffset(
+				button.AbsolutePosition.X + button.AbsoluteSize.X / 2,
+				button.AbsolutePosition.Y - 4
+			),
+			Size = UDim2.fromOffset(120, 36),
+			BackgroundTransparency = 1,
+			Text = `+{math.floor(gained + 0.5)}`,
+			TextScaled = true,
+			Font = UiTheme.get().head,
+			TextColor3 = JUDGEMENT_COLORS[result.judgement],
+			TextStrokeTransparency = 0.15,
+			TextStrokeColor3 = Palette.Base.Sumi,
+		}, gui) :: TextLabel
+		local info = TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(pop, info, {
+			Position = pop.Position - UDim2.fromOffset(0, 70),
+			TextTransparency = 1,
+			TextStrokeTransparency = 1,
+		}):Play()
+		task.delay(0.6, function()
+			pop:Destroy()
+		end)
+	end
+
 	local function showResult(result: RhythmEngine.HitResult)
 		local part = noteParts[result.noteIndex]
 		if part then
-			part.Transparency = 1
+			setNoteTransparency(part, 1)
 		end
-		score += scorePerNote * RhythmEngine.Judge.Weight[result.judgement]
-		scoreLabel.Text = tostring(math.floor(score + 0.5))
+		local gained = scorePerNote * RhythmEngine.Judge.Weight[result.judgement]
+		score += gained
+		scoreLabel.Text = withCommas(math.floor(score + 0.5))
+		scorePanel.Size = UDim2.fromOffset(204, 65)
+		TweenService:Create(
+			scorePanel,
+			TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Size = UDim2.fromOffset(190, 60) }
+		):Play()
+		popScore(result, gained)
 		judgementToken += 1
 		local token = judgementToken
 		judgementLabel.Text = result.judgement
 		judgementLabel.TextColor3 = JUDGEMENT_COLORS[result.judgement]
-		comboLabel.Text = if result.combo >= 2 then `{result.combo} combo` else ""
+		comboLabel.Text = if result.combo >= 5 then `{result.combo} COMBO` else ""
+		-- Pop: the judgement and the combo spring in from a bigger size; milestones pop harder.
+		judgementLabel.Size = UDim2.fromScale(1.35, 0.55)
+		TweenService:Create(
+			judgementLabel,
+			TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Size = UDim2.fromScale(1, 0.42) }
+		):Play()
+		if result.combo >= 5 then
+			local milestone = result.combo % 25 == 0
+			comboLabel.Size = if milestone then UDim2.fromScale(0.85, 0.3) else UDim2.fromScale(0.68, 0.25)
+			TweenService:Create(
+				comboLabel,
+				TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ Size = UDim2.fromScale(0.6, 0.22) }
+			):Play()
+		end
 		offsetLabel.Text = if result.judgement == "Miss"
 			then ""
 			else (if result.offsetMs > 0 then `+{result.offsetMs}ms late` else `{result.offsetMs}ms early`)
@@ -363,6 +564,9 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			if token == judgementToken then
 				judgementLabel.Text = ""
 				offsetLabel.Text = ""
+				if result.judgement == "Miss" then
+					comboLabel.Text = ""
+				end
 			end
 		end)
 	end
@@ -393,6 +597,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 
 	local lastBeat = -math.huge
 	local nextBeat = 1
+	local firstActive = 1
 	local renderConn: RBXScriptConnection
 	local function finish(summary: RhythmEngine.Summary?)
 		if finished then
@@ -458,19 +663,51 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 
 		-- Notes are drawn at their latency-corrected time so they cross the hit line
 		-- exactly when the player should tap.
+		-- Only the notes inside the visible window are touched each frame (a 90 s Hard chart has ~400),
+		-- and the ones that are done are hidden once and skipped from then on.
 		local latency = session.latencyMs
-		for _, note in session.notes do
-			local part = noteParts[note.index]
-			if session.offsets[note.index] ~= nil then
-				continue
-			end
+		local goodWindow = RhythmEngine.Judge.DefaultWindows.Good
+		local notes = session.notes
+		local i = firstActive
+		while i <= #notes do
+			local note = notes[i]
 			local untilHit = note.timeMs + latency - now
-			if untilHit > scrollMs or untilHit < -RhythmEngine.Judge.DefaultWindows.Good then
-				part.Transparency = 1
-			else
-				part.Transparency = 0
-				part.CFrame = noteCFrame(origin, note.lane, -LANE_LENGTH * (untilHit / scrollMs))
+			if untilHit > scrollMs then
+				break
 			end
+			local part = noteParts[note.index]
+			if session.offsets[note.index] ~= nil or untilHit < -goodWindow then
+				setNoteTransparency(part, 1)
+				if i == firstActive then
+					firstActive += 1
+				end
+			else
+				setNoteTransparency(part, 0)
+				local z = -LANE_LENGTH * (untilHit / scrollMs)
+				moveNote(part, noteCFrame(origin, note.lane, z))
+			end
+			i += 1
+		end
+
+		-- Beat lines: the ones inside the visible window, fading in from the far end.
+		while beatLow <= #beatList and beatList[beatLow] + latency - now < -150 do
+			beatLow += 1
+		end
+		local used = 0
+		local b = beatLow
+		while b <= #beatList and used < BEAT_POOL do
+			local untilBeat = beatList[b] + latency - now
+			if untilBeat > scrollMs then
+				break
+			end
+			used += 1
+			local line = beatParts[used]
+			line.CFrame = origin * CFrame.new(0, 0.3, -LANE_LENGTH * (untilBeat / scrollMs))
+			line.Transparency = 0.45 + 0.5 * math.clamp(untilBeat / scrollMs, 0, 1)
+			b += 1
+		end
+		for k = used + 1, BEAT_POOL do
+			beatParts[k].Transparency = 1
 		end
 
 		for _, pad in pads do

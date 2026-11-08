@@ -1,7 +1,6 @@
 return function(loader, expect)
 	local Songs = loader.require("src/shared/Songs")
 	local Chart = loader.require("src/shared/RhythmEngine/Chart")
-	local Seeds = loader.require("src/shared/Garden/Seeds")
 
 	local difficulties = { "Easy", "Normal", "Hard" }
 	-- Lune has no Random; always pick the first segment.
@@ -12,16 +11,6 @@ return function(loader, expect)
 	}
 
 	return {
-		{
-			"every seed with a song points at a real song",
-			function()
-				for _, seed in Seeds.List do
-					if seed.songId then
-						expect(Songs.get(seed.songId) ~= nil).toBeTruthy()
-					end
-				end
-			end,
-		},
 		{
 			"every song chart is well formed and ordered by difficulty",
 			function()

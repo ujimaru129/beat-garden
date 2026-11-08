@@ -29,9 +29,16 @@ local PRESETS = {
 			OutdoorAmbient = hue("Sora", "Day"):Lerp(Palette.Base.Washi, 0.5),
 			ExposureCompensation = 0,
 		},
-		grade = { TintColor = Palette.Base.Washi, Saturation = 0.05, Contrast = 0, Brightness = 0.02 },
-		bloom = { Intensity = 0.25, Size = 20, Threshold = 1.6 },
-		atmosphere = { Density = 0.25, Color = hue("Sakura", "Day"), Decay = hue("Sora", "Day"), Haze = 1, Glare = 0 },
+		-- Dreamy candy pastel: pink-white tint, lifted saturation, a soft glow over everything.
+		grade = { TintColor = Color3.fromHex("#FFEAF6"), Saturation = 0.3, Contrast = 0.04, Brightness = 0.04 },
+		bloom = { Intensity = 0.55, Size = 30, Threshold = 1.0 },
+		atmosphere = {
+			Density = 0.3,
+			Color = hue("Sakura", "Day"),
+			Decay = hue("Fuji", "Day"),
+			Haze = 1.6,
+			Glare = 0.2,
+		},
 	},
 	Night = {
 		lighting = {
@@ -42,12 +49,12 @@ local PRESETS = {
 			ExposureCompensation = 0,
 		},
 		grade = {
-			TintColor = hue("Fuji", "Night"):Lerp(Color3.new(1, 1, 1), 0.55),
-			Saturation = 0.35,
-			Contrast = 0.12,
-			Brightness = -0.02,
+			TintColor = hue("Fuji", "Night"):Lerp(Color3.new(1, 1, 1), 0.5),
+			Saturation = 0.6,
+			Contrast = 0.2,
+			Brightness = -0.03,
 		},
-		bloom = { Intensity = 1.1, Size = 36, Threshold = 0.85 },
+		bloom = { Intensity = 1.6, Size = 32, Threshold = 0.75 },
 		atmosphere = {
 			Density = 0.45,
 			Color = Palette.Base.YoruSky,
@@ -97,6 +104,22 @@ function Atmosphere.start()
 	local atmosphere = ensure("Atmosphere", "BeatGardenAtmosphere") :: Atmosphere
 	local lite = Atmosphere.isLite()
 	bloom.Enabled = not lite
+	local current = Atmosphere.timeOfDay()
+	-- During a rhythm run there is no bloom and no haze: they smear the notes into blobs.
+	local function updateBloom()
+		local info = TweenInfo.new(0.3)
+		local running = player:GetAttribute("InRhythm") == true
+		local preset = (PRESETS :: any)[current]
+		TweenService:Create(bloom, info, (if running then { Intensity = 0 } else preset.bloom) :: any):Play()
+		TweenService
+			:Create(
+				atmosphere,
+				info,
+				(if running then { Density = 0, Haze = 0, Glare = 0 } else preset.atmosphere) :: any
+			)
+			:Play()
+	end
+	player:GetAttributeChangedSignal("InRhythm"):Connect(updateBloom)
 
 	local function apply(time: string, seconds: number)
 		local preset = (PRESETS :: any)[time]
@@ -107,7 +130,6 @@ function Atmosphere.start()
 		TweenService:Create(atmosphere, info, preset.atmosphere :: any):Play()
 	end
 
-	local current = Atmosphere.timeOfDay()
 	apply(current, 0.05) -- jump straight to the right look when joining
 
 	task.spawn(function()
