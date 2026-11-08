@@ -14,3 +14,6 @@ sourcemap.json
 # Editors / OS
 .DS_Store
 Thumbs.db
+
+# Audio sources and renders (large; asset IDs live in the game data instead)
+/audio/

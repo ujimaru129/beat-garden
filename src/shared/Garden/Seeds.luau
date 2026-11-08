@@ -11,6 +11,7 @@ export type Seed = {
 	price: number, -- coins
 	growSeconds: number,
 	baseSellPrice: number, -- coins, before mutation and weight
+	songId: string?, -- Shared.Songs id used for Tend charts (nil = built-in test charts)
 }
 
 local Seeds = {}
@@ -25,6 +26,7 @@ local list: { Seed } = {
 		price = 20,
 		growSeconds = 120,
 		baseSellPrice = 30,
+		songId = "kabuki_dance", -- placeholder pairing; change freely
 	},
 	{
 		seedId = "seed_matcha",
@@ -33,6 +35,7 @@ local list: { Seed } = {
 		price = 80,
 		growSeconds = 180,
 		baseSellPrice = 110,
+		songId = "dard_aur_dhamaka", -- placeholder pairing; change freely
 	},
 	{
 		seedId = "seed_sora",

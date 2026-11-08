@@ -9,12 +9,16 @@ local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local RhythmLane3D = require(script.Parent.RhythmLane3D)
 local RhythmOverlay = require(script.Parent.RhythmOverlay)
+local SongClock = require(script.Parent.SongClock)
 
 local RhythmRunner = {}
 
 export type Run = {
 	segment: RhythmEngine.Segment,
 	bpm: number,
+	beatsMs: { number }?, -- real beat times; the metronome ticks on these instead of a fixed bpm
+	audioAssetId: string?, -- uploaded audio; when set it plays and drives the clock
+	offsetMs: number?, -- shifts the chart against the audio
 	difficulty: Difficulty.Name,
 }
 
@@ -31,20 +35,44 @@ function RhythmRunner.play(run: Run, onFinished: (summary: RhythmEngine.Summary)
 	end
 	running = true
 	local player = Players.LocalPlayer :: Player
+	local clock: SongClock.Clock? = nil
 	local options: RhythmOverlay.Options = {
 		latencyMs = tonumber(player:GetAttribute("LatencyMs")) or 0,
+		chartOffsetMs = run.offsetMs,
 		bpm = run.bpm,
+		beatTimesMs = run.beatsMs,
 		scrollMs = Difficulty.ScrollMs[run.difficulty],
 		metronome = true,
 		onFinished = function(summary)
 			running = false
+			if clock then
+				clock.stop()
+			end
 			onFinished(summary)
 		end,
 	}
-	if player:GetAttribute("Rhythm2D") == true then
-		RhythmOverlay.play(run.segment, options)
+	local function start()
+		if player:GetAttribute("Rhythm2D") == true then
+			RhythmOverlay.play(run.segment, options)
+		else
+			RhythmLane3D.play(run.segment, options)
+		end
+	end
+	local assetId = run.audioAssetId
+	if assetId and #run.segment.notes > 0 then
+		-- Real audio: load it, then use its position as the clock. Without it, the metronome plays.
+		task.spawn(function()
+			local leadIn = 2000
+			clock = SongClock.create(assetId, run.segment.notes[1][2], leadIn)
+			if clock then
+				options.getSongTimeMs = clock.getTimeMs
+				options.isAudioDone = clock.isDone
+				options.leadInMs = leadIn
+			end
+			start()
+		end)
 	else
-		RhythmLane3D.play(run.segment, options)
+		start()
 	end
 	return true
 end

@@ -23,10 +23,12 @@ export type Options = {
 	-- With real audio, pass a function reading Sound.TimePosition (minus regionStartMs).
 	getSongTimeMs: (() -> number)?,
 	leadInMs: number?,
+	isAudioDone: (() -> boolean)?, -- with real audio: the run waits for the song's ending before it finishes
 	-- How long a note is visible before the hit line (ms). Default SCROLL_MS; see Shared.Difficulty.
 	scrollMs: number?,
 	-- Metronome tick on every beat (only used with the default clock).
 	bpm: number?,
+	beatTimesMs: { number }?, -- tracked beat times (ms); the metronome ticks on these instead of a fixed bpm
 	metronome: boolean?,
 	onFinished: (RhythmEngine.Summary) -> (),
 }
@@ -382,6 +384,7 @@ function RhythmOverlay.play(segment: RhythmEngine.Segment, options: Options): ()
 	end)
 
 	local lastBeat = -math.huge
+	local nextBeat = 1
 	local renderConn: RBXScriptConnection
 	local function finish(summary: RhythmEngine.Summary?)
 		if finished then
@@ -408,7 +411,16 @@ function RhythmOverlay.play(segment: RhythmEngine.Segment, options: Options): ()
 		end
 
 		-- Metronome on the default clock: tick on each beat from the first note.
-		if metronome and options.bpm then
+		if metronome and options.beatTimesMs then
+			-- Real beat times of the song (they drift from a fixed bpm over a long chart).
+			local beats = options.beatTimesMs
+			while nextBeat <= #beats and beats[nextBeat] <= now do
+				if now - beats[nextBeat] < 120 then
+					metronome:Play()
+				end
+				nextBeat += 1
+			end
+		elseif metronome and options.bpm then
 			local beat = math.floor((now - firstNoteMs) / (60000 / options.bpm))
 			if beat > lastBeat and beat >= -4 then
 				lastBeat = beat
@@ -439,7 +451,7 @@ function RhythmOverlay.play(segment: RhythmEngine.Segment, options: Options): ()
 			end
 		end
 
-		if now > session:endTimeMs() then
+		if now > session:endTimeMs() and (options.isAudioDone == nil or options.isAudioDone()) then
 			finish(session:getSummary())
 		end
 	end)

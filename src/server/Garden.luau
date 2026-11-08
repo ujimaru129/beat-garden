@@ -25,6 +25,7 @@ local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Trading = require(script.Parent.Trading)
+local Songs = require(ReplicatedStorage.Shared.Songs)
 local TestCharts = require(ReplicatedStorage.Shared.Dev.TestCharts)
 local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
@@ -257,13 +258,24 @@ local function tendBegin(s: Session, payload: unknown): any
 		return { ok = false, reason = `rest a little more ({wait}s)`, cooldown = wait }
 	end
 
-	-- Prototype: the test charts stand in for a real song's tend segments.
-	local segment = (TestCharts :: any)[difficulty] :: RhythmEngine.Segment
+	-- A random segment of the seed's song; seeds without a song use the built-in test charts.
+	local songId = seedOf(plot).songId
+	local picked = if songId then Songs.pick(songId, difficulty) else nil
+	local segment = if picked then picked.segment else (TestCharts :: any)[difficulty] :: RhythmEngine.Segment
 	local pending = (
 		{ segment = segment, startedAt = os.clock(), difficulty = difficulty :: Difficulty.Name } :: any
 	) :: Pending
 	s.pending = pending
-	return { ok = true, segment = segment, bpm = TestCharts.Bpm[difficulty], difficulty = difficulty }
+	return {
+		ok = true,
+		segment = segment,
+		bpm = if picked then picked.bpm else TestCharts.Bpm[difficulty],
+		beatsMs = if picked then picked.beatsMs else nil,
+		songName = if picked then picked.name else nil,
+		audioAssetId = if picked then picked.audioAssetId else nil,
+		offsetMs = if picked then picked.offsetMs else nil,
+		difficulty = difficulty,
+	}
 end
 
 local function tendSubmit(s: Session, payload: unknown): any

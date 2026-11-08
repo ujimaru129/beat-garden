@@ -58,18 +58,25 @@ function TendFlow.start()
 			Toast.show(`Can't tend now: {if info then info.reason else "no answer"}`)
 			return
 		end
-		local started = RhythmRunner.play(
-			{ segment = info.segment, bpm = info.bpm, difficulty = info.difficulty },
-			function(summary)
-				local result = tend:InvokeServer("submit", summary)
-				setPromptsEnabled(true)
-				if result and result.ok then
-					Toast.show(`+{result.points} growth!  {result.stage}  {math.floor(result.fraction * 100)}%`)
-				else
-					Toast.show(`Run not counted: {if result then result.reason else "no answer"}`)
-				end
+		local started = RhythmRunner.play({
+			segment = info.segment,
+			bpm = info.bpm,
+			beatsMs = info.beatsMs,
+			audioAssetId = info.audioAssetId,
+			offsetMs = info.offsetMs,
+			difficulty = info.difficulty,
+		}, function(summary)
+			local result = tend:InvokeServer("submit", summary)
+			setPromptsEnabled(true)
+			if result and result.ok then
+				local score = math.floor(summary.accuracy * 1000000 + 0.5)
+				Toast.show(
+					`Score {score}   +{result.points} growth!  {result.stage}  {math.floor(result.fraction * 100)}%`
+				)
+			else
+				Toast.show(`Run not counted: {if result then result.reason else "no answer"}`)
 			end
-		)
+		end)
 		if not started then
 			setPromptsEnabled(true)
 			Toast.show("Already playing")

@@ -240,6 +240,18 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		IgnoreGuiInset = true,
 		DisplayOrder = 50,
 	}, nil) :: ScreenGui
+	local scoreLabel = make("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 12),
+		Size = UDim2.fromOffset(220, 44),
+		BackgroundTransparency = 1,
+		Text = "0",
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextScaled = true,
+		Font = Enum.Font.GothamBlack,
+		TextColor3 = Palette.Base.Washi,
+		TextStrokeTransparency = 0.4,
+	}, gui) :: TextLabel
 	local onTap: (number) -> () = function() end
 	local buttonRow = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 1),
@@ -305,13 +317,37 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	end
 	RhythmOverlay.setMovementEnabled(false)
 
+	-- Hide the plants, spirit orbs and their lights: they sit in front of the camera and cover the lane.
+	local hidden: { Instance } = {}
+	local function hideWorld(inst: Instance)
+		if inst:IsA("BasePart") and (inst.Name == "Plant" or inst.Name == "SpiritOrb") then
+			inst.LocalTransparencyModifier = 1
+			table.insert(hidden, inst)
+		elseif inst:IsA("PointLight") then
+			inst.Enabled = false
+			table.insert(hidden, inst)
+		end
+	end
+	for _, rootName in { "Garden", "PlotVisuals" } do
+		local root = Workspace:FindFirstChild(rootName)
+		if root then
+			for _, d in root:GetDescendants() do
+				hideWorld(d)
+			end
+		end
+	end
+
 	-- Feedback
 	local judgementToken = 0
+	local scorePerNote = 1000000 / #session.notes
+	local score = 0.0
 	local function showResult(result: RhythmEngine.HitResult)
 		local part = noteParts[result.noteIndex]
 		if part then
 			part.Transparency = 1
 		end
+		score += scorePerNote * RhythmEngine.Judge.Weight[result.judgement]
+		scoreLabel.Text = tostring(math.floor(score + 0.5))
 		judgementToken += 1
 		local token = judgementToken
 		judgementLabel.Text = result.judgement
@@ -356,12 +392,20 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	end)
 
 	local lastBeat = -math.huge
+	local nextBeat = 1
 	local renderConn: RBXScriptConnection
 	local function finish(summary: RhythmEngine.Summary?)
 		if finished then
 			return
 		end
 		finished = true
+		for _, inst in hidden do
+			if inst:IsA("BasePart") then
+				inst.LocalTransparencyModifier = 0
+			elseif inst:IsA("PointLight") then
+				inst.Enabled = true
+			end
+		end
 		renderConn:Disconnect()
 		inputConn:Disconnect()
 		if camera then
@@ -395,7 +439,16 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end
 
 		-- Metronome on the default clock: tick on each beat from the first note.
-		if metronome and options.bpm then
+		if metronome and options.beatTimesMs then
+			-- Real beat times of the song (they drift from a fixed bpm over a long chart).
+			local beats = options.beatTimesMs
+			while nextBeat <= #beats and beats[nextBeat] <= now do
+				if now - beats[nextBeat] < 120 then
+					metronome:Play()
+				end
+				nextBeat += 1
+			end
+		elseif metronome and options.bpm then
 			local beat = math.floor((now - firstNoteMs) / (60000 / options.bpm))
 			if beat > lastBeat and beat >= -4 then
 				lastBeat = beat
@@ -426,7 +479,9 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			end
 		end
 
-		if now > session:endTimeMs() then
+		-- With real audio the run ends when the song ends, so the ending is never cut off.
+		local audioDone = options.isAudioDone == nil or options.isAudioDone()
+		if now > session:endTimeMs() and audioDone then
 			finish(session:getSummary())
 		end
 	end)
