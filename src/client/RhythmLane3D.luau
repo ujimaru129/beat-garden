@@ -106,8 +106,10 @@ end
 local function makeNotePart(lane: number, parent: Instance): BasePart
 	local day = not UiTheme.get().night
 	-- The notes are plain (not glowing) so their outline stays crisp: by day deep and saturated against the
-	-- pastel floor, by night bright and saturated, lit by the board light (see "BoardLight" in play).
-	local color = if day then laneColor(lane):Lerp(Color3.new(0, 0, 0), 0.38) else laneColor(lane)
+	-- pastel floor, by night bright and saturated (the scene is evenly lit during a run, see Atmosphere).
+	local color = if day
+		then laneColor(lane):Lerp(Color3.new(0, 0, 0), 0.38)
+		else laneColor(lane):Lerp(Color3.new(1, 1, 1), 0.15)
 	local shape = laneShape(lane)
 	local props = solidProps(color)
 	props.Material = Enum.Material.SmoothPlastic
@@ -130,7 +132,8 @@ local function makeNotePart(lane: number, parent: Instance): BasePart
 			slab.Name = "Slab"
 			slab.Material = props.Material
 			slab.Transparency = 1
-			slab.Size = Vector3.new(width * (k + 0.5) / TRI_SLABS, 0.6 * NOTE_SCALE, height / TRI_SLABS + 0.02)
+			-- thin: a thick triangle shows its near side face from the low camera and looks like a house
+			slab.Size = Vector3.new(width * (k + 0.5) / TRI_SLABS, 0.2 * NOTE_SCALE, height / TRI_SLABS + 0.02)
 			make("Part", slab, anchor)
 		end
 		return anchor
@@ -262,21 +265,6 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		pad.Material = Enum.Material.Neon
 		pad.Transparency = 1
 		pads[lane + 1] = make("Part", pad, folder)
-	end
-
-	-- At night a light above the hit zone lights the notes, so they are bright without a glow smearing them.
-	if not dayLook then
-		local lamp = make("Part", {
-			Name = "BoardLight",
-			Anchored = true,
-			CanCollide = false,
-			CanQuery = false,
-			CanTouch = false,
-			Transparency = 1,
-			Size = Vector3.new(1, 1, 1),
-			CFrame = origin * CFrame.new(0, 5, -6),
-		}, folder)
-		make("PointLight", { Brightness = 8, Range = 70, Color = Color3.new(1, 1, 1), Shadows = false }, lamp)
 	end
 
 	-- One piece per note, created up front (segments are short).

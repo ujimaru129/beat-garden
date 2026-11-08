@@ -7,6 +7,7 @@ downbeats chosen for (a) similar sound before and after the join, (b) clear beat
 The ending is always the source's actual ending (no fade-out).
 
 Usage: make_shorts.py <in.wav> <out_dir> [target_seconds=90] [bpm_hint] [back_skip_beats=0] [front_skip_beats=0] [sections]
+('asis' = the source is already the finished short edit: keep it, only analyse the beats)
 ('sections' = only splice at section changes, for songs whose phrases are not whole 4/4 bars)
 (skip args nudge the automatic splice by whole beats: +back drops that many beats from the start of the
 back part, -front shortens the front part; use multiples of 4 to stay on bar lines.)
@@ -125,6 +126,31 @@ def band_vec(spec: np.ndarray, t0: float, t1: float) -> np.ndarray:
     )
 
 
+def write_asis(src, out_dir, name, y, bpm, beats, down, total) -> None:
+    """The source is already the finished short edit: keep it as it is (only peak-normalised) and write the
+    beat data for the charts. Nothing is cut, joined or faded."""
+    stereo = decode(src, OUT_SR, 2)
+    out = stereo * (10 ** (-1 / 20) / max(1e-6, float(np.abs(stereo).max())))
+    wav = out_dir / f"{name}.short.wav"
+    pcm = (np.clip(out, -1, 1) * 32767).astype("<i2")
+    subprocess.run(
+        ["ffmpeg", "-v", "quiet", "-y", "-f", "s16le", "-ar", str(OUT_SR), "-ac", "2", "-i", "-", str(wav)],
+        input=pcm.tobytes(),
+        check=True,
+    )
+    info = {
+        "source": Path(src).name,
+        "bpm": round(bpm, 2),
+        "durationSeconds": round(len(out) / OUT_SR, 2),
+        "sourceSeconds": round(total, 2),
+        "joinSeconds": 0.0,
+        "beatsMs": [round(float(b) * 1000, 1) for b in beats],
+        "downbeat": [bool(d > 0) for d in down],
+    }
+    (out_dir / f"{name}.short.json").write_text(json.dumps(info))
+    print(json.dumps({k: v for k, v in info.items() if k not in ("beatsMs", "downbeat")}))
+
+
 def main() -> None:
     src = sys.argv[1]
     out_dir = Path(sys.argv[2])
@@ -133,8 +159,9 @@ def main() -> None:
     back_skip = int(sys.argv[5]) if len(sys.argv) > 5 else 0
     front_skip = int(sys.argv[6]) if len(sys.argv) > 6 else 0
     sections = len(sys.argv) > 7 and sys.argv[7] == "sections"
+    asis = len(sys.argv) > 7 and sys.argv[7] == "asis"
     out_dir.mkdir(parents=True, exist_ok=True)
-    name = Path(src).stem
+    name = Path(src).stem.strip()
 
     y = decode(src, SR, 1)
     spec = spectrogram(y)
@@ -164,6 +191,9 @@ def main() -> None:
         down[b] = low_b[same].mean() - low_b[win].mean()
 
     total = len(y) / SR
+    if asis:
+        write_asis(src, out_dir, name, y, bpm, beats, down, total)
+        return
     # Section changes: where the sound 8 beats after differs most from the 8 beats before.
     V = np.array([band_vec(spec, beats[b], beats[min(b + 1, nb - 1)]) for b in range(nb)])
     W = 8

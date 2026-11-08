@@ -24,14 +24,15 @@ local PRESETS = {
 	Day = {
 		lighting = {
 			ClockTime = 14,
-			Brightness = 3,
-			Ambient = hue("Sakura", "Day"):Lerp(Palette.Base.Washi, 0.6),
-			OutdoorAmbient = hue("Sora", "Day"):Lerp(Palette.Base.Washi, 0.5),
-			ExposureCompensation = 0,
+			Brightness = 1.8,
+			-- coloured, not white: the light itself carries the pastel
+			Ambient = hue("Sakura", "Day"):Lerp(hue("Fuji", "Day"), 0.5),
+			OutdoorAmbient = hue("Sora", "Day"):Lerp(hue("Sakura", "Day"), 0.45),
+			ExposureCompensation = -0.35,
 		},
 		-- Dreamy candy pastel: pink-white tint, lifted saturation, a soft glow over everything.
-		grade = { TintColor = Color3.fromHex("#FFEAF6"), Saturation = 0.3, Contrast = 0.04, Brightness = 0.04 },
-		bloom = { Intensity = 0.55, Size = 30, Threshold = 1.0 },
+		grade = { TintColor = Color3.fromHex("#FFE3F2"), Saturation = 0.5, Contrast = 0.12, Brightness = -0.03 },
+		bloom = { Intensity = 0.25, Size = 24, Threshold = 1.4 },
 		atmosphere = {
 			Density = 0.3,
 			Color = hue("Sakura", "Day"),
@@ -111,6 +112,17 @@ function Atmosphere.start()
 		local running = player:GetAttribute("InRhythm") == true
 		local preset = (PRESETS :: any)[current]
 		TweenService:Create(bloom, info, (if running then { Intensity = 0 } else preset.bloom) :: any):Play()
+		-- The time-of-day colour grade tints everything (night: purple, which dulls green, yellow and blue), so
+		-- during a run the grade is neutral and the notes show their true colours.
+		local neutral = { TintColor = Color3.new(1, 1, 1), Saturation = 0.3, Contrast = 0.1, Brightness = 0.04 }
+		TweenService:Create(grade, info, (if running then neutral else preset.grade) :: any):Play()
+		-- At night the plain notes need even light to read well: lift the ambient light during a run.
+		if current == "Night" then
+			local ambient = if running
+				then { Ambient = Color3.fromRGB(235, 228, 250), OutdoorAmbient = Color3.fromRGB(235, 228, 250) }
+				else { Ambient = preset.lighting.Ambient, OutdoorAmbient = preset.lighting.OutdoorAmbient }
+			TweenService:Create(Lighting, info, ambient :: any):Play()
+		end
 		TweenService
 			:Create(
 				atmosphere,

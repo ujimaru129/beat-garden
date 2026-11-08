@@ -28,7 +28,12 @@ import make_shorts as m  # noqa: E402
 
 SEG_BEATS = 32
 # Creator Hub asset ids of the uploaded short edits (keep in sync when a song is re-uploaded)
-ASSET_IDS = {"kabuki_dance": "102174208355987", "dard_aur_dhamaka": "76576411777923"}
+ASSET_IDS = {
+    "kabuki_dance": "102174208355987",
+    "dard_aur_dhamaka": "76576411777923",
+    "pastel_trip": "86433689428068",
+    "kamikaze": "131155520574193",
+}
 # notes per second to aim for, minimum gap in beats, and which grid positions are allowed
 DIFFICULTY = {
     "Easy": {"density": 1.6, "min_gap_beats": 0.9, "min_gap_ms": 380, "grid": {"beat": 1.0}},

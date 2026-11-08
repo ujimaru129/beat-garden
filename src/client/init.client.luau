@@ -20,6 +20,7 @@ local RhythmRunner = require(script.RhythmRunner)
 local TendFlow = require(script.TendFlow)
 local TutorialUI = require(script.TutorialUI)
 local UiTheme = require(script.UiTheme)
+local WorldFx = require(script.WorldFx)
 
 local player = Players.LocalPlayer :: Player
 
@@ -27,6 +28,7 @@ local player = Players.LocalPlayer :: Player
 GardenState.start()
 Atmosphere.start()
 PlotVisuals.start()
+task.spawn(WorldFx.start) -- waits for the island to arrive
 PromptFilter.start()
 MarketUI.start()
 SpiritUI.start()
