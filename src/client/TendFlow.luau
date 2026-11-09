@@ -8,6 +8,8 @@ local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local DifficultyPicker = require(script.Parent.DifficultyPicker)
 local GardenState = require(script.Parent.GardenState)
@@ -185,7 +187,7 @@ function TendFlow.start()
 			end
 		end
 		if #rows == 0 then
-			table.insert(rows, { text = "No seeds. Buy some at the Market!" })
+			table.insert(rows, { text = "No seeds. Buy some from the Shop button!" })
 		end
 		seedModal.setRows(rows)
 		picking = true
@@ -285,6 +287,19 @@ function TendFlow.start()
 		if plot:IsA("BasePart") then
 			HarvestFx.play(plot.Position, mutation)
 		end
+	end
+
+	-- Studio only: P switches the Plot Pass on and off, to try the premium plots and the locked look.
+	if RunService:IsStudio() then
+		UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed or input.KeyCode ~= Enum.KeyCode.P then
+				return
+			end
+			local result = GardenState.call("devPlotPass")
+			Toast.show(
+				if result.ok then `Plot Pass {if result.hasPass then "ON" else "OFF"} (Studio)` else "not available"
+			)
+		end)
 	end
 
 	-- The prompt --------------------------------------------------------------------------

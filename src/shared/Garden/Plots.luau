@@ -9,9 +9,9 @@ local Plots = {}
 Plots.CoinMax = 10 -- plots a player can reach with coins
 Plots.PassBonus = 2 -- extra plots the game pass adds
 Plots.Max = Plots.CoinMax + Plots.PassBonus
--- The Plot Pass game pass id. 0 = not set up yet (the pass plots then show "coming soon"). Create the pass in the
--- Creator Dashboard and put its id here.
-Plots.PassId = 0
+-- The Plot Pass game pass id (0 would mean not set up: the pass plots then show "coming soon"). Created in the
+-- Creator Dashboard.
+Plots.PassId = 2075782599
 
 -- Where the plots stand: the island is a ring of up to 8 territories around the hub (spawn and shops at the
 -- centre). A territory is a grid of Columns x Rows plots; row 0 (plots 1..4) is nearest the hub.

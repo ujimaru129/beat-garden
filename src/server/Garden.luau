@@ -876,6 +876,7 @@ local function devPlotPass(s: Session): any
 		return fail("not available")
 	end
 	s.hasPass = not s.hasPass
+	print(`[Garden] {s.player.Name}: Plot Pass switched {if s.hasPass then "on" else "off"} (Studio)`)
 	refresh(s)
 	push(s)
 	return { ok = true, hasPass = s.hasPass }
@@ -903,6 +904,13 @@ local function createSession(player: Player, container: Instance): Session?
 		return nil
 	end
 	local slot = freeSlot()
+	if slot > Plots.Slots then
+		-- The island has a territory for Plots.Slots players. Set Max Players to the same number in Game Settings;
+		-- this is only the safety net so that territories never overlap.
+		PlayerStore.save(store, true) -- release the data lock
+		player:Kick("This server is full. Please join another one.")
+		return nil
+	end
 	local nodes: { [string]: Node } = {}
 	for index = 1, Plots.Max do
 		nodes[Plots.keyOf(index)] = buildPlotNode(player, slot, index, container)
@@ -936,6 +944,7 @@ local function createSession(player: Player, container: Instance): Session?
 			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, Plots.PassId)
 		end)
 		s.hasPass = ok and owns == true
+		print(`[Garden] {player.Name}: Plot Pass owned = {s.hasPass}`)
 	end
 	refresh(s)
 	push(s)
@@ -1035,6 +1044,7 @@ function Garden.start()
 			local s = sessions[player]
 			if s and purchased and Plots.PassId > 0 and passId == Plots.PassId then
 				s.hasPass = true
+				print(`[Garden] {player.Name}: bought the Plot Pass`)
 				refresh(s)
 				push(s)
 			end
