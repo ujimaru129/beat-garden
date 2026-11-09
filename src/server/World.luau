@@ -391,8 +391,229 @@ local function buildClouds(root: Folder, center: Vector3, top: number, rng: Rand
 	end
 end
 
+-- A fluffy cotton-candy cloud bank (pink, sky, lilac and cream puffs) where a rainbow touches down.
+local function cottonCandy(root: Folder, at: Vector3, rng: Random)
+	local colors = { C.pink, C.sky, C.grape, C.white, C.pink, C.mint }
+	for k = 1, 7 do
+		local r = rng:NextNumber(5, 10)
+		local puff = ball(
+			root,
+			at + Vector3.new(rng:NextNumber(-9, 9), rng:NextNumber(0, 7) + r * 0.5, rng:NextNumber(-9, 9)),
+			r,
+			colors[k % #colors + 1]
+		)
+		puff.Name = "Cloud"
+		tag(
+			puff,
+			"Bob",
+			{ BobAmount = rng:NextNumber(0.4, 1), BobSpeed = rng:NextNumber(0.4, 0.9), BobPhase = rng:NextNumber(0, 6) }
+		)
+	end
+end
+
+-- A rainbow arch standing on the rim in the direction `angle` (radians around the island centre), `halfWidth` wide
+-- on each side. Every territory looks outwards, so there is one arch straight ahead of each (see buildArches).
+local function buildArch(root: Folder, center: Vector3, top: number, angle: number, halfWidth: number, rng: Random)
+	local colors = {
+		hex("#FF4F4F"),
+		hex("#FF9A3D"),
+		hex("#FFE14D"),
+		hex("#4DE68A"),
+		hex("#3FC8FF"),
+		hex("#A86BFF"),
+	}
+	local out = Vector3.new(math.cos(angle), 0, math.sin(angle))
+	local side = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+	local middle = center + out * (ISLAND_RADIUS * 0.93)
+	for i, color in colors do
+		local inset = (i - 1) * 3
+		local function endpoint(sign: number): Part
+			local post = newPart({
+				Name = "RainbowEnd",
+				Transparency = 1,
+				Position = Vector3.new(middle.X, top, middle.Z) + side * sign * (halfWidth - inset),
+			}, root)
+			local attachment = Instance.new("Attachment")
+			attachment.CFrame = CFrame.Angles(0, 0, math.rad(90)) -- X axis up: the curve bulges upwards
+			attachment.Parent = post
+			return post
+		end
+		local left, right = endpoint(-1), endpoint(1)
+		if i == 1 then
+			cottonCandy(root, left.Position, rng)
+			cottonCandy(root, right.Position, rng)
+		end
+		local beam = Instance.new("Beam")
+		beam.Name = "Rainbow"
+		beam.Attachment0 = left:FindFirstChildOfClass("Attachment")
+		beam.Attachment1 = right:FindFirstChildOfClass("Attachment")
+		beam.Color = ColorSequence.new(color)
+		beam.Width0 = 3.2
+		beam.Width1 = 3.2
+		local curve = (halfWidth * 1.1) - inset * 2
+		beam.CurveSize0 = curve
+		beam.CurveSize1 = -curve
+		beam.Segments = 24
+		beam.FaceCamera = true
+		beam.LightEmission = 0.5
+		beam.Transparency = NumberSequence.new(0.1)
+		beam.Parent = left
+		tag(beam, "RainbowBeam", { DayWidth = 3.2, NightWidth = 0.7 })
+	end
+end
+
+-- One rainbow in front of every territory (the territory at slot k faces the angle (k-1)/Slots of a full turn).
+-- The one straight ahead of the "-Z" territory is the original arch built in buildSky.
+local function buildArches(root: Folder, center: Vector3, top: number, rng: Random)
+	for slot = 1, Plots.Slots do
+		local angle = (slot - 1) / Plots.Slots * math.pi * 2
+		if slot ~= 7 then
+			buildArch(root, center, top, angle, 52, rng)
+		end
+	end
+end
+
+-- Candy spires all around the rim: striped columns with a glowing ball on top.
+local function buildRim(root: Folder, center: Vector3, top: number, rng: Random)
+	local colors = { C.pink, C.sky, C.mint, C.lemon, C.grape, C.peach }
+	local count = 36
+	for i = 1, count do
+		local angle = (i / count) * math.pi * 2 + rng:NextNumber(-0.04, 0.04)
+		local radius = ISLAND_RADIUS * rng:NextNumber(0.93, 0.97)
+		local base = Vector3.new(center.X + math.cos(angle) * radius, top, center.Z + math.sin(angle) * radius)
+		local height = rng:NextNumber(16, 34)
+		local a = colors[(i - 1) % #colors + 1]
+		local b = colors[(i + 1) % #colors + 1]
+		local lower = column(root, base, 1.6, height * 0.5, a)
+		lower.Name = "RimSpire"
+		local upper = column(root, base + Vector3.new(0, height * 0.5, 0), 1.6, height * 0.5, b)
+		upper.Name = "RimSpire"
+		local lamp = ball(root, base + Vector3.new(0, height + 1.2, 0), 2.4, tube(a))
+		lamp.Name = "RimSpire"
+		tag(lamp, "Pulse", { PulseAmount = 0.15 })
+		-- Night: every other spire throws a neon laser into the sky that sweeps in a circle. It stays on during a
+		-- rhythm run, so the background glows behind the lane.
+		if i % 2 == 0 then
+			local tip = newPart({
+				Name = "LaserTip",
+				Transparency = 1,
+				Size = Vector3.new(0.4, 0.4, 0.4),
+				Position = lamp.Position + Vector3.new(0, 70, 0),
+			}, root)
+			tag(tip, "Orbit", {
+				OrbitCenter = lamp.Position + Vector3.new(0, 70, 0),
+				OrbitRadius = rng:NextNumber(14, 30),
+				OrbitSpeed = (if i % 4 == 0 then 1 else -1) * rng:NextNumber(0.35, 0.9),
+				OrbitPhase = rng:NextNumber(0, 6.28),
+			})
+			local a0 = Instance.new("Attachment")
+			a0.Parent = lamp
+			local a1 = Instance.new("Attachment")
+			a1.Parent = tip
+			local laser = Instance.new("Beam")
+			laser.Name = "Laser"
+			laser.Attachment0 = a0
+			laser.Attachment1 = a1
+			laser.Color = ColorSequence.new(a.neon)
+			laser.Width0 = 0.7
+			laser.Width1 = 0.15
+			laser.Segments = 1
+			laser.FaceCamera = true
+			laser.LightEmission = 1
+			laser.Transparency = NumberSequence.new(0.05)
+			laser.Parent = lamp
+			tag(laser, "NightOnly")
+			tag(laser, "KeepInRun")
+		end
+	end
+end
+
+-- Balloons packed along the rim, bigger and higher than the ones in the middle.
+local function buildRimBalloons(root: Folder, center: Vector3, top: number, rng: Random)
+	local colors = { C.pink, C.sky, C.mint, C.lemon, C.grape }
+	for i = 1, 46 do
+		local angle = (i / 46) * math.pi * 2 + rng:NextNumber(-0.06, 0.06)
+		local radius = rng:NextNumber(BAND_MAX + 2, ISLAND_RADIUS - 4)
+		local x, z = center.X + math.cos(angle) * radius, center.Z + math.sin(angle) * radius
+		local height = rng:NextNumber(24, 70)
+		local r = rng:NextNumber(3.5, 6)
+		local tint = colors[i % #colors + 1]
+		local b = ball(root, Vector3.new(x, top + height, z), r, tint)
+		b.Name = "Balloon"
+		tag(
+			b,
+			"Bob",
+			{ BobAmount = rng:NextNumber(1, 2.5), BobSpeed = rng:NextNumber(0.5, 1.1), BobPhase = rng:NextNumber(0, 6) }
+		)
+		local string_ = newPart({
+			Name = "BalloonString",
+			Size = Vector3.new(0.14, height - r, 0.14),
+			Position = Vector3.new(x, top + (height - r) / 2, z),
+			Transparency = 0.3,
+		}, root, tube(tint))
+		string_.Name = "BalloonString"
+	end
+end
+
+-- Things that float in the sky: small candy islands, high puffy clouds and stars that circle the island.
+local function buildSkyFloaters(root: Folder, center: Vector3, top: number, rng: Random)
+	local colors = { C.pink, C.sky, C.mint, C.lemon, C.grape, C.peach }
+	-- floating islands: a cake-like disc, a tuft on top and a tapering underside
+	for i = 1, 16 do
+		local angle = (i / 16) * math.pi * 2 + rng:NextNumber(-0.2, 0.2)
+		local radius = ISLAND_RADIUS * rng:NextNumber(1.25, 1.9)
+		local y = top + rng:NextNumber(35, 95)
+		local at = Vector3.new(center.X + math.cos(angle) * radius, y, center.Z + math.sin(angle) * radius)
+		local size = rng:NextNumber(9, 16)
+		local tint = colors[i % #colors + 1]
+		local parts: { Part } = {}
+		table.insert(parts, disc(root, at, size, y, 3, C.white))
+		table.insert(parts, disc(root, at - Vector3.new(0, 3, 0), size * 0.7, y, 3, tint))
+		table.insert(parts, disc(root, at - Vector3.new(0, 6, 0), size * 0.4, y, 3, tint))
+		table.insert(parts, ball(root, at + Vector3.new(0, size * 0.35, 0), size * 0.35, tint))
+		local phase = rng:NextNumber(0, 6)
+		for _, part in parts do
+			part.Name = "SkyIsland"
+		end
+		-- the pieces bob together (same phase and amount)
+		for _, part in parts do
+			tag(part, "Bob", { BobAmount = 1.6, BobSpeed = 0.5, BobPhase = phase })
+		end
+	end
+	-- high clouds
+	for i = 1, 20 do
+		local angle = (i / 20) * math.pi * 2 + rng:NextNumber(-0.15, 0.15)
+		local radius = ISLAND_RADIUS * rng:NextNumber(1.1, 2.1)
+		local y = top + rng:NextNumber(60, 130)
+		local cx, cz = center.X + math.cos(angle) * radius, center.Z + math.sin(angle) * radius
+		for k = 1, 4 do
+			local puff = ball(
+				root,
+				Vector3.new(cx + rng:NextNumber(-14, 14), y + rng:NextNumber(-3, 3), cz + rng:NextNumber(-14, 14)),
+				rng:NextNumber(8, 16),
+				if k % 2 == 0 then C.white else C.pink
+			)
+			puff.Name = "SkyCloud"
+		end
+	end
+	-- stars circling the island high above
+	for i = 1, 14 do
+		local y = top + rng:NextNumber(45, 110)
+		local star =
+			ball(root, Vector3.new(center.X, y, center.Z), rng:NextNumber(1.6, 2.6), tube(colors[i % #colors + 1]))
+		star.Name = "Star"
+		tag(star, "Orbit", {
+			OrbitCenter = Vector3.new(center.X, y, center.Z),
+			OrbitRadius = rng:NextNumber(120, 190),
+			OrbitSpeed = (if i % 2 == 0 then 1 else -1) * rng:NextNumber(0.03, 0.08),
+			OrbitPhase = rng:NextNumber(0, 6.28),
+		})
+		tag(star, "Pulse", { PulseAmount = 0.2 })
+	end
+end
+
 -- A rainbow arch of beams behind the plots, and a disco ball hanging above them.
-local function buildSky(root: Folder, center: Vector3, top: number)
+local function buildSky(root: Folder, center: Vector3, top: number, rng: Random)
 	local archZ = center.Z - ISLAND_RADIUS * 0.9
 	local colors = {
 		hex("#FF4F4F"),
@@ -409,6 +630,10 @@ local function buildSky(root: Folder, center: Vector3, top: number)
 			{ Name = "RainbowEnd", Transparency = 1, Position = Vector3.new(center.X - halfWidth + inset, top, archZ) },
 			root
 		)
+		if i == 1 then
+			cottonCandy(root, left.Position, rng)
+			cottonCandy(root, Vector3.new(center.X + halfWidth, top, archZ), rng)
+		end
 		local right = newPart(
 			{ Name = "RainbowEnd", Transparency = 1, Position = Vector3.new(center.X + halfWidth - inset, top, archZ) },
 			root
@@ -515,7 +740,11 @@ function World.start()
 	buildGumdrops(root, center, top, rng)
 	buildBalloons(root, center, top, rng)
 	buildClouds(root, center, top, rng)
-	buildSky(root, center, top)
+	buildRim(root, center, top, rng)
+	buildRimBalloons(root, center, top, rng)
+	buildSkyFloaters(root, center, top, rng)
+	buildArches(root, center, top, rng)
+	buildSky(root, center, top, rng)
 end
 
 return World

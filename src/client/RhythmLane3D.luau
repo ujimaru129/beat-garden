@@ -277,12 +277,27 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		beams[lane + 1] = make("Part", beam, folder)
 	end
 
-	-- One piece per note, created up front (segments are short).
-	local noteParts: { [number]: BasePart } = {}
-	for _, note in session.notes do
-		local part = makeNotePart(note.lane, folder)
-		setNoteTransparency(part, 1)
-		noteParts[note.index] = part
+	-- Note pieces are made only when a note comes into view and go back to a pool when it is done. A Hard chart
+	-- has ~450 notes (a triangle is 15 parts), but never more than about ten are on screen at once, so the
+	-- pool stays small instead of creating ~2000 parts at the start of the run.
+	local noteParts: { [number]: BasePart? } = {}
+	local pools: { [number]: { BasePart } } = { [0] = {}, [1] = {}, [2] = {}, [3] = {} }
+	local function acquireNote(index: number, lane: number): BasePart
+		local pool = pools[lane]
+		local part = table.remove(pool)
+		if not part then
+			part = makeNotePart(lane, folder)
+		end
+		noteParts[index] = part :: BasePart
+		return part :: BasePart
+	end
+	local function releaseNote(index: number, lane: number)
+		local part = noteParts[index]
+		if part then
+			setNoteTransparency(part, 1)
+			noteParts[index] = nil
+			table.insert(pools[lane], part)
+		end
 	end
 
 	-- Beat lines: thin lines across the board that scroll down with the music, one per beat.
@@ -306,6 +321,27 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		beatParts[k] = make("Part", part, folder)
 	end
 	local beatLow = 1
+
+	-- Night only, out on the plaza beside the lanes (the lanes themselves stay clean so the notes read well):
+	-- a disco floor whose tiles light up in a wave that runs towards the player on the beat. (No tall glowing bars or
+	-- lamp posts: they dazzle.)
+	local tiles: { { part: BasePart, row: number, col: number } } = {}
+	local TILE = 4
+	local TILE_ROWS = 10
+	if not dayLook then
+		for _, side in { -1, 1 } do
+			for col = 0, 2 do
+				for row = 0, TILE_ROWS - 1 do
+					local part = solidProps(Color3.fromRGB(20, 14, 60))
+					part.Name = "PlazaTile"
+					part.Size = Vector3.new(TILE - 0.3, 0.1, TILE - 0.3)
+					part.CFrame = origin * CFrame.new(side * (2 * LANE_WIDTH + 5 + col * TILE), 0.12, 2 - row * TILE)
+					part.Material = Enum.Material.Neon
+					table.insert(tiles, { part = make("Part", part, folder) :: BasePart, row = row, col = col })
+				end
+			end
+		end
+	end
 
 	-- Judgement / combo text floating above the hit line.
 	local textAnchor = make("Part", {
@@ -475,14 +511,22 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	end
 	RhythmOverlay.setMovementEnabled(false)
 
-	-- Hide the plants, spirit orbs and their lights: they sit in front of the camera and cover the lane.
+	-- Hide the garden (plots, frames, posts, marks, beacon, plants, spirit orbs and their lights): it sits around and
+	-- in front of the camera and covers the lane. Everything is put back as it was when the run ends.
 	local hidden: { Instance } = {}
+	local previous: { [Instance]: number } = {}
 	local function hideWorld(inst: Instance)
-		if inst:IsA("BasePart") and (inst.Name == "Plant" or inst.Name == "SpiritOrb") then
+		if inst:IsA("BasePart") then
+			previous[inst] = inst.LocalTransparencyModifier
 			inst.LocalTransparencyModifier = 1
 			table.insert(hidden, inst)
-		elseif inst:IsA("PointLight") then
-			inst.Enabled = false
+		elseif
+			inst:IsA("PointLight")
+			or inst:IsA("SurfaceGui")
+			or inst:IsA("BillboardGui")
+			or inst:IsA("ParticleEmitter")
+		then
+			(inst :: any).Enabled = false
 			table.insert(hidden, inst)
 		end
 	end
@@ -532,10 +576,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	end
 
 	local function showResult(result: RhythmEngine.HitResult)
-		local part = noteParts[result.noteIndex]
-		if part then
-			setNoteTransparency(part, 1)
-		end
+		releaseNote(result.noteIndex, result.lane)
 		local gained = scorePerNote * RhythmEngine.Judge.Weight[result.judgement]
 		score += gained
 		scoreLabel.Text = withCommas(math.floor(score + 0.5))
@@ -651,7 +692,9 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end
 		if hit then
 			showResult(hit)
-			hitFx(lane, hit.judgement)
+			if hit.judgement ~= "Miss" then
+				hitFx(lane, hit.judgement)
+			end
 		end
 	end
 
@@ -676,9 +719,9 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		finished = true
 		for _, inst in hidden do
 			if inst:IsA("BasePart") then
-				inst.LocalTransparencyModifier = 0
-			elseif inst:IsA("PointLight") then
-				inst.Enabled = true
+				inst.LocalTransparencyModifier = previous[inst] or 0
+			else
+				(inst :: any).Enabled = true
 			end
 		end
 		renderConn:Disconnect()
@@ -708,6 +751,18 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 
 	renderConn = RunService.RenderStepped:Connect(function()
 		local now = getSongTimeMs()
+
+		if #tiles > 0 then
+			local beatLength = 60000 / (options.bpm or 120)
+			local beatPos = (now - firstNoteMs) / beatLength
+			-- the lit wave on the floor runs towards the player, two rows per beat
+			for _, tile in tiles do
+				local wave = (tile.row - beatPos * 2) % 6
+				local glow = math.clamp(1 - wave / 2, 0, 1)
+				local color = laneColor((tile.row + tile.col) % 4)
+				tile.part.Color = Color3.fromRGB(20, 14, 60):Lerp(color, 0.15 + 0.85 * glow)
+			end
+		end
 
 		for _, m in session:update(now) do
 			showResult(m)
@@ -745,13 +800,13 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			if untilHit > scrollMs then
 				break
 			end
-			local part = noteParts[note.index]
 			if session.offsets[note.index] ~= nil or untilHit < -goodWindow then
-				setNoteTransparency(part, 1)
+				releaseNote(note.index, note.lane)
 				if i == firstActive then
 					firstActive += 1
 				end
 			else
+				local part = noteParts[note.index] or acquireNote(note.index, note.lane)
 				setNoteTransparency(part, 0)
 				local z = -LANE_LENGTH * (untilHit / scrollMs)
 				moveNote(part, noteCFrame(origin, note.lane, z))

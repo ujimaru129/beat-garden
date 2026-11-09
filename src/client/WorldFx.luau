@@ -73,12 +73,29 @@ function WorldFx.start()
 		beam.LightEmission = if night then 1 else 0.5
 	end
 
-	-- During a rhythm run only the floor stays: props, beams and neon rims would clutter the lane.
+	-- During a rhythm run the floor stays, and so does the scenery up in the sky (balloons, clouds, the rainbow): it
+	-- keeps the picture from going bare and sits well above the lane. The props on the ground and the neon rims
+	-- hide, because they would clutter the lane.
+	local KEEP_IN_RUN: { [string]: boolean } = {
+		Balloon = true,
+		BalloonString = true,
+		Cloud = true,
+		SkyCloud = true,
+		SkyIsland = true,
+		Star = true,
+		RimSpire = true,
+	}
 	local function applyRun(inst: Instance)
 		if inst:IsA("BasePart") and not CollectionService:HasTag(inst, "WorldFloor") then
-			inst.LocalTransparencyModifier = if running then 1 else 0
+			inst.LocalTransparencyModifier = if running and not KEEP_IN_RUN[inst.Name] then 1 else 0
 		elseif inst:IsA("Beam") then
-			inst.Enabled = not running and (night or not CollectionService:HasTag(inst, "NightOnly"))
+			if CollectionService:HasTag(inst, "RainbowBeam") then
+				inst.Enabled = true
+			elseif CollectionService:HasTag(inst, "KeepInRun") then
+				inst.Enabled = night -- lasers: on all night, also during a run
+			else
+				inst.Enabled = not running and (night or not CollectionService:HasTag(inst, "NightOnly"))
+			end
 		end
 	end
 
@@ -161,7 +178,7 @@ function WorldFx.start()
 					setTint(part, true)
 				end
 				for _, beam in beams do
-					beam.Enabled = night and not running
+					beam.Enabled = night and (not running or CollectionService:HasTag(beam, "KeepInRun"))
 				end
 				for _, beam in rainbow do
 					setRainbowWidth(beam)

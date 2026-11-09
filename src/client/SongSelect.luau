@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Palette = require(ReplicatedStorage.Shared.Palette)
+local ScrollThumb = require(script.Parent.ScrollThumb)
 local UiTheme = require(script.Parent.UiTheme)
 
 local SongSelect = {}
@@ -133,6 +134,7 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 	}, panel) :: ScrollingFrame
 	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	make("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 8) }, list)
+	ScrollThumb.attach(list, panel, UDim2.new(0.5, -4, 0, 60), UDim2.new(0, 5, 1, -76))
 
 	-- Right: the preview ----------------------------------------------------------------------------
 	local preview = make("Frame", {
@@ -455,13 +457,6 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 	local function scrollBy(dy: number)
 		list.CanvasPosition = Vector2.new(0, math.clamp(list.CanvasPosition.Y + dy, 0, maxScroll()))
 	end
-	local overList = false
-	list.MouseEnter:Connect(function()
-		overList = true
-	end)
-	list.MouseLeave:Connect(function()
-		overList = false
-	end)
 	local function beginDrag(input: InputObject)
 		local kind = input.UserInputType
 		if not gui.Enabled or not (kind == Enum.UserInputType.Touch or kind == Enum.UserInputType.MouseButton1) then
@@ -478,9 +473,8 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 			return
 		end
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
-			if overList then
-				scrollBy(-input.Position.Z * 48)
-			end
+			-- mouse wheel and a Mac trackpad's two-finger scroll; the list is the only thing that scrolls here
+			scrollBy(-input.Position.Z * 48)
 			return
 		end
 		local active = dragging

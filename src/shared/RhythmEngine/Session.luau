@@ -105,8 +105,9 @@ function Session.update(self: Session, songTimeMs: number): { HitResult }
 	return results
 end
 
--- A tap on `lane` at `songTimeMs`. Returns the hit, or nil if there was no note close enough
--- (taps far from any note are ignored, never punished).
+-- A tap on `lane` at `songTimeMs`. Returns the hit, or nil if there was no note close enough.
+-- A tap well BEFORE a note (between one and two Good windows early) is a "miss shot": it uses the note up as a
+-- Miss. Without that, mashing a lane would hit every note in it. Taps farther away are ignored, never punished.
 function Session.hit(self: Session, lane: number, songTimeMs: number): (HitResult?, { HitResult })
 	local misses = self:update(songTimeMs)
 	local t = songTimeMs - self.latencyMs
@@ -127,6 +128,10 @@ function Session.hit(self: Session, lane: number, songTimeMs: number): (HitResul
 	local note = self.notes[queue[head]]
 	local offset = t - note.timeMs
 	if math.abs(offset) > self.windows.Good then
+		if offset < 0 and offset >= -2 * self.windows.Good then
+			self.laneHeads[lane] = head + 1
+			return self:_judge(note, false), misses
+		end
 		return nil, misses
 	end
 	self.laneHeads[lane] = head + 1

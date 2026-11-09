@@ -119,6 +119,33 @@ return function(loader, expect)
 			end,
 		},
 		{
+			"a tap well before a note is a miss shot that uses the note up",
+			function()
+				local s = RE.Session.new(makeSegment(4))
+				local early = s:hit(0, 15000 - 200) -- 200 ms early: outside Good (135), inside two Good windows
+				expect(early.judgement).toBe("Miss")
+				expect(early.combo).toBe(0)
+				expect(s.offsets[early.noteIndex]).toBe(false)
+				-- the note is gone: a tap on time now has nothing to hit
+				expect(s:hit(0, 15000)).toBe(nil)
+			end,
+		},
+		{
+			"mashing a lane does not keep the combo alive",
+			function()
+				local seg = { segment = 0, startMs = 0, notes = { { 0, 1000 }, { 0, 2000 }, { 0, 3000 } } }
+				local s = RE.Session.new(seg)
+				local hits = 0
+				for t = 0, 3500, 70 do -- ten taps per second on one lane
+					local r = s:hit(0, t)
+					if r and r.judgement ~= "Miss" then
+						hits += 1
+					end
+				end
+				expect(hits).toBe(0)
+			end,
+		},
+		{
 			"wrong lane does not consume the note",
 			function()
 				local s = RE.Session.new(makeSegment(4))
