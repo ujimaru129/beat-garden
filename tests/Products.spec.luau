@@ -57,5 +57,23 @@ return function(loader, expect)
 				expect(table.concat(Shop.stock(5, nil, 0), ",")).toBe(table.concat(Shop.stock(5), ","))
 			end,
 		},
+		{
+			"one-time tips: only known keys are kept, and every tip has English and Japanese text",
+			function()
+				local Tips = loader.require("src/shared/Garden/Tips")
+				local Strings = loader.require("src/shared/Strings")
+				local clean = PlayerData.sanitize({ tips = { levelup = true, nonsense = true, star = false } })
+				expect(clean.tips.levelup).toBe(true)
+				expect(clean.tips.nonsense).toBe(nil)
+				expect(clean.tips.star).toBe(nil)
+				for _, key in Tips.Keys do
+					expect(Strings.get(`tip_{key}`, "en") ~= `tip_{key}`).toBeTruthy()
+					expect(Strings.get(`tip_{key}`, "ja") ~= Strings.get(`tip_{key}`, "en")).toBeTruthy()
+				end
+				expect(Tips.isKey("levelup")).toBe(true)
+				expect(Tips.isKey("x")).toBe(false)
+				expect(Tips.isKey(5)).toBe(false)
+			end,
+		},
 	}
 end

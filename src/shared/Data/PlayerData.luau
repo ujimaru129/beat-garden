@@ -10,6 +10,7 @@ local Plots = require(script.Parent.Parent.Garden.Plots)
 local Products = require(script.Parent.Parent.Garden.Products)
 local Seeds = require(script.Parent.Parent.Garden.Seeds)
 local Spirits = require(script.Parent.Parent.Garden.Spirits)
+local Tips = require(script.Parent.Parent.Garden.Tips)
 local Tutorial = require(script.Parent.Parent.Garden.Tutorial)
 
 export type Fruit = {
@@ -38,6 +39,7 @@ export type Data = {
 	collection: Collection.Book, -- discovered seed x variant entries (Garden/Collection)
 	xp: number, -- garden XP (Garden/Progression)
 	mastery: { [string]: number }, -- seedId -> harvests of that seed
+	tips: { [string]: boolean }, -- one-time tips already shown (Garden/Tips)
 	receipts: { string }, -- recent Robux purchase ids already granted (never grant one twice)
 	instantCredits: number, -- paid Instant Grows not used yet
 	sprinklerUntil: number, -- unix seconds: new plants get the Look Sprinkler until then
@@ -75,6 +77,7 @@ function PlayerData.new(): Data
 		collection = {},
 		xp = 0,
 		mastery = {},
+		tips = {},
 		receipts = {},
 		instantCredits = 0,
 		sprinklerUntil = 0,
@@ -212,6 +215,13 @@ function PlayerData.sanitize(raw: any): Data
 		end
 	end
 
+	if type(raw.tips) == "table" then
+		for key, seen in raw.tips do
+			if seen == true and Tips.isKey(key) then
+				data.tips[key] = true
+			end
+		end
+	end
 	if type(raw.receipts) == "table" then
 		for _, id in raw.receipts do
 			if type(id) == "string" and #id <= 64 and #data.receipts < Products.MaxReceipts then

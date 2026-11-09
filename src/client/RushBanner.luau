@@ -9,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Rush = require(ReplicatedStorage.Shared.Garden.Rush)
 local Toast = require(script.Parent.Toast)
+local TipsUI = require(script.Parent.TipsUI)
 local UiTheme = require(script.Parent.UiTheme)
 
 local RushBanner = {}
@@ -54,6 +55,7 @@ function RushBanner.start()
 				label.Visible = true
 				if state.active and not wasActive then
 					Toast.show(`BPM Rush! {genre} seeds mutate more for a while`)
+					TipsUI.show("rush")
 				end
 				wasActive = state.active
 			else

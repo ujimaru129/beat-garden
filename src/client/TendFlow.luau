@@ -4,6 +4,7 @@
 -- Tend: pick a difficulty -> play the chart -> see the result. The server hands out the chart and
 -- decides every number; this module only shows and plays.
 
+local ContentProvider = game:GetService("ContentProvider")
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -25,6 +26,7 @@ local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Songs = require(ReplicatedStorage.Shared.Songs)
 local SongArt = require(ReplicatedStorage.Shared.Songs.Art)
 local Toast = require(script.Parent.Toast)
+local TipsUI = require(script.Parent.TipsUI)
 
 local TendFlow = {}
 
@@ -38,6 +40,7 @@ local function announceLevelUp(result: any)
 	if not result.leveledUp then
 		return
 	end
+	TipsUI.show("levelup")
 	local names: { string } = {}
 	for _, seedId in result.unlocked or {} do
 		table.insert(names, seedName(seedId))
@@ -50,6 +53,17 @@ local function announceLevelUp(result: any)
 end
 
 function TendFlow.start()
+	-- Load the song sleeves in the background now, so they are already there when the song select opens.
+	task.spawn(function()
+		local urls: { string } = {}
+		for _, url in SongArt do
+			table.insert(urls, url)
+		end
+		pcall(function()
+			ContentProvider:PreloadAsync(urls)
+		end)
+	end)
+
 	local remote = ReplicatedStorage:WaitForChild("Tend", 10) :: RemoteFunction?
 	if not remote then
 		warn("[TendFlow] Tend remote not found")
@@ -309,7 +323,11 @@ function TendFlow.start()
 				`Harvested {name}!  worth {result.value}{if overripe then "  (overripe: harvest sooner!)" else ""}`
 			)
 		end
+		if overripe then
+			TipsUI.show("overripe")
+		end
 		if result.newStar then
+			TipsUI.show("star")
 			Toast.show(
 				`{seedName(result.seedId)} mastery {string.rep("\u{2605}", result.stars)}: grows faster, mutates more!`
 			)

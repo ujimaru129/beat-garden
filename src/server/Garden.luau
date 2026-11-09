@@ -35,6 +35,7 @@ local Leaderboard = require(ReplicatedStorage.Shared.Garden.Leaderboard)
 local Leaderboards = require(script.Parent.Leaderboards)
 local PlantLook = require(script.Parent.PlantLook)
 local Products = require(ReplicatedStorage.Shared.Garden.Products)
+local Tips = require(ReplicatedStorage.Shared.Garden.Tips)
 local Trading = require(script.Parent.Trading)
 local Songs = require(ReplicatedStorage.Shared.Songs)
 local Rank = require(ReplicatedStorage.Shared.Rank)
@@ -1029,6 +1030,20 @@ local function devGrow(s: Session): any
 	return { ok = grown > 0, reason = if grown == 0 then "nothing to grow" else nil, grown = grown }
 end
 
+-- A one-time tip: the first call for a key says it is new (and the client shows the tip); later calls do not.
+local function tip(s: Session, payload: unknown): any
+	if not Tips.isKey(payload) then
+		return fail("unknown tip")
+	end
+	local d = data(s)
+	local key = payload :: string
+	if d.tips[key] then
+		return { ok = true, new = false }
+	end
+	d.tips[key] = true
+	return { ok = true, new = true }
+end
+
 -- Uses one paid Instant Grow on a plant: it ripens at once.
 local function useInstantGrow(s: Session, payload: unknown): any
 	local plotKey = ownedKey(s, payload)
@@ -1192,6 +1207,27 @@ local function createSession(player: Player, container: Instance): Session?
 	return s
 end
 
+-- A little rate limit on the remotes (a token bucket per player): honest play makes a few calls a second at most, so
+-- a client that spams them is simply told to slow down.
+local CALLS_PER_SECOND = 10
+local CALL_BURST = 30
+local buckets: { [Player]: { tokens: number, at: number } } = {}
+local function allowCall(player: Player): boolean
+	local now = os.clock()
+	local bucket = buckets[player]
+	if not bucket then
+		bucket = { tokens = CALL_BURST, at = now }
+		buckets[player] = bucket
+	end
+	bucket.tokens = math.min(CALL_BURST, bucket.tokens + (now - bucket.at) * CALLS_PER_SECOND)
+	bucket.at = now
+	if bucket.tokens < 1 then
+		return false
+	end
+	bucket.tokens -= 1
+	return true
+end
+
 function Garden.start()
 	local container = Instance.new("Folder")
 	container.Name = "Garden"
@@ -1228,6 +1264,9 @@ function Garden.start()
 		if not s then
 			return fail("not ready")
 		end
+		if not allowCall(player) then
+			return fail("too fast")
+		end
 		if action == "begin" then
 			return tendBegin(s, payload)
 		elseif action == "submit" then
@@ -1243,6 +1282,9 @@ function Garden.start()
 		local s = sessions[player]
 		if not s then
 			return fail("not ready")
+		end
+		if not allowCall(player) then
+			return fail("too fast")
 		end
 		if action == "state" then
 			return { ok = true, state = snapshot(s) }
@@ -1268,6 +1310,8 @@ function Garden.start()
 			return skipTutorial(s)
 		elseif action == "devReset" then
 			return devReset(s)
+		elseif action == "tip" then
+			return tip(s, payload)
 		elseif action == "useInstantGrow" then
 			return useInstantGrow(s, payload)
 		elseif action == "leaderboard" then
@@ -1318,6 +1362,7 @@ function Garden.start()
 	Players.PlayerRemoving:Connect(function(player)
 		local s = sessions[player]
 		sessions[player] = nil
+		buckets[player] = nil
 		if s then
 			PlayerStore.save(s.store, true)
 			for _, node in s.nodes do
