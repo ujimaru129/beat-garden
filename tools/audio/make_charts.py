@@ -34,13 +34,30 @@ GENRES = {
     "dard_aur_dhamaka": "Dance",
     "pastel_trip": "Pop",
     "kamikaze": "Rock",
+    "gorilla_glue": "Rock",
+    "fly_me_to_the_saitama": "Dance",
+    "metropolitan_expressway": "Dance",
+    "naniwa_march": "Japan",
+    "orange_beach": "Pop",
+    "blue_samurai": "Japan",
+    "shinjuku_deep_romance": "Pop",
 }
 OFFSETS_MS = {"pastel_trip": -25}
+# The beat tracker sometimes locks onto the off-beat. A fraction of a beat to move the tracked beats later, found by
+# looking at where the kick drum lands in the grid (0.5 = the kick sits half a beat after the tracked beat).
+BEAT_PHASE = {"blue_samurai": 0.53}
 ASSET_IDS = {
     "kabuki_dance": "102174208355987",
     "dard_aur_dhamaka": "76576411777923",
     "pastel_trip": "86433689428068",
     "kamikaze": "131155520574193",
+    "gorilla_glue": "115753003413703",
+    "fly_me_to_the_saitama": "127786101931228",
+    "metropolitan_expressway": "81016210615436",
+    "naniwa_march": "117617671462568",
+    "orange_beach": "109616336017148",
+    "blue_samurai": "113086931885012",
+    "shinjuku_deep_romance": "77158663817198",
 }
 # notes per second to aim for, minimum gap in beats, and which grid positions are allowed
 DIFFICULTY = {
@@ -177,6 +194,11 @@ def main() -> None:
     info = json.loads(Path(wav).with_suffix(".json").read_text())
     beats = np.array(info["beatsMs"]) / 1000
     y = m.decode(wav, m.SR, 1)
+    phase = BEAT_PHASE.get(song_id, 0.0)
+    if phase:
+        step = np.diff(beats, append=beats[-1] + float(np.median(np.diff(beats))))
+        beats = beats + phase * step
+        beats = beats[beats < len(y) / m.SR - 0.05]
     onsets, _ = detect_onsets(y)
 
     if seg_arg == "full":

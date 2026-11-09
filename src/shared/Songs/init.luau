@@ -44,6 +44,12 @@ local list: { SongData } = {
 	require(script.Data.DardAurDhamaka) :: any,
 	require(script.Data.PastelTrip) :: any,
 	require(script.Data.Kamikaze) :: any,
+	require(script.Data.GorillaGlue) :: any,
+	require(script.Data.FlyMeToTheSaitama) :: any,
+	require(script.Data.MetropolitanExpressway) :: any,
+	require(script.Data.NaniwaMarch) :: any,
+	require(script.Data.BlueSamurai) :: any,
+	require(script.Data.ShinjukuDeepRomance) :: any,
 }
 Songs.List = table.freeze(list)
 
