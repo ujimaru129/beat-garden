@@ -4,6 +4,7 @@
 return {
 	songId = "dard_aur_dhamaka",
 	name = "Dard aur Dhamaka",
+	genre = "Dance",
 	bpm = 148.2,
 	offsetMs = 0, -- shift all notes if the uploaded audio plays early/late
 	audioAssetId = "76576411777923" :: string?, -- Creator Hub asset id of the uploaded short edit

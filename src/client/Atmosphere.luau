@@ -45,8 +45,9 @@ local PRESETS = {
 		lighting = {
 			ClockTime = 0,
 			Brightness = 1.3,
-			Ambient = Palette.Base.YoruGround:Lerp(hue("Fuji", "Night"), 0.3),
-			OutdoorAmbient = hue("Fuji", "Night"):Lerp(Palette.Base.YoruSky, 0.5),
+			-- purple-lit, not black: the dark bodies of the world must still show their shapes
+			Ambient = Color3.fromRGB(95, 70, 160),
+			OutdoorAmbient = Color3.fromRGB(120, 90, 190),
 			ExposureCompensation = 0,
 		},
 		grade = {
@@ -55,13 +56,14 @@ local PRESETS = {
 			Contrast = 0.2,
 			Brightness = -0.03,
 		},
-		bloom = { Intensity = 1.6, Size = 32, Threshold = 0.75 },
+		-- Tight, strong glow: a wide bloom turns neon into a blur; a small one keeps tubes and lasers crisp.
+		bloom = { Intensity = 1.1, Size = 9, Threshold = 0.9 },
 		atmosphere = {
-			Density = 0.45,
+			Density = 0.18,
 			Color = Palette.Base.YoruSky,
 			Decay = Palette.Base.YoruGround,
-			Haze = 2,
-			Glare = 0.4,
+			Haze = 0.6,
+			Glare = 0.1,
 		},
 	},
 }

@@ -4,6 +4,9 @@
 -- Prototype look; the final design comes later.
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
+local UserInputService = game:GetService("UserInputService")
 
 local UiTheme = require(script.Parent.UiTheme)
 
@@ -13,6 +16,7 @@ export type Row = {
 	text: string,
 	color: Color3?,
 	onTap: (() -> ())?, -- nil = just text
+	note: boolean?, -- a long explanation: scaled on its own, and it does not set the common text size
 }
 
 export type Modal = {
@@ -100,7 +104,114 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	}, panel) :: ScrollingFrame
 	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 
+	-- Flick / drag scrolling done by hand: the rows are buttons and swallow the touch, so the built-in
+	-- scrolling does not start when the finger lands on a row. A drag past a few pixels also cancels the tap.
+	list.ScrollingEnabled = false
+	local dragging: InputObject? = nil
+	local lastY = 0
+	local moved = 0
+	local velocity = 0
+	local function maxScroll(): number
+		return math.max(0, list.AbsoluteCanvasSize.Y - list.AbsoluteSize.Y)
+	end
+	local function scrollBy(dy: number)
+		list.CanvasPosition = Vector2.new(0, math.clamp(list.CanvasPosition.Y + dy, 0, maxScroll()))
+	end
+	-- A drag starts when a press lands on the list or on one of its rows (their own InputBegan events, so no
+	-- screen coordinates are compared: the GUI inset would shift those).
+	local overList = false
+	list.MouseEnter:Connect(function()
+		overList = true
+	end)
+	list.MouseLeave:Connect(function()
+		overList = false
+	end)
+	local function beginDrag(input: InputObject)
+		local kind = input.UserInputType
+		if not gui.Enabled or not (kind == Enum.UserInputType.Touch or kind == Enum.UserInputType.MouseButton1) then
+			return
+		end
+		dragging = input
+		lastY = input.Position.Y
+		moved = 0
+		velocity = 0
+	end
+	list.InputBegan:Connect(beginDrag)
+
+	UserInputService.InputChanged:Connect(function(input: InputObject)
+		if not gui.Enabled then
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseWheel then
+			if overList then
+				scrollBy(-input.Position.Z * 48)
+			end
+			return
+		end
+		local active = dragging
+		if not active then
+			return
+		end
+		local kind = input.UserInputType
+		local isMove = input == active or kind == Enum.UserInputType.MouseMovement or kind == Enum.UserInputType.Touch
+		if not isMove then
+			return
+		end
+		local y = (if input == active then active.Position.Y else input.Position.Y)
+		local dy = lastY - y
+		lastY = y
+		moved += math.abs(dy)
+		velocity = dy
+		scrollBy(dy)
+	end)
+	UserInputService.InputEnded:Connect(function(input: InputObject)
+		local kind = input.UserInputType
+		if
+			dragging
+			and (input == dragging or kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch)
+		then
+			dragging = nil
+		end
+	end)
+	-- a flick keeps rolling and slows down
+	RunService.Heartbeat:Connect(function()
+		if dragging == nil and math.abs(velocity) > 0.4 then
+			scrollBy(velocity)
+			velocity *= 0.93
+		end
+	end)
+
 	local modal: Modal
+
+	-- All rows share one text size: the biggest size at which the longest row still fits on one line.
+	-- (TextScaled would give every row its own size, so a short name would look bigger than a long one.)
+	local rowButtons: { { button: TextButton, text: string, note: boolean } } = {}
+	local function applyTextSize()
+		local width = (if list.AbsoluteSize.X > 40 then list.AbsoluteSize.X else 480) - 8 - 28 - 12
+		local best = 26
+		for _, row in rowButtons do
+			if row.note then
+				continue
+			end
+			local size = best
+			while size > 12 do
+				local bounds = TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(width, math.huge))
+				if bounds.Y <= size * 1.4 then
+					break
+				end
+				size -= 1
+			end
+			best = math.min(best, size)
+		end
+		for _, row in rowButtons do
+			if row.note then
+				row.button.TextScaled = true
+			else
+				row.button.TextScaled = false
+				row.button.TextSize = best
+			end
+		end
+	end
 
 	local function close()
 		if not gui.Enabled then
@@ -121,6 +232,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			restyle()
 			gui.Enabled = true
 			UiTheme.setBlur("list", true)
+			task.defer(applyTextSize) -- the list has its real size once it is shown
 		end,
 		close = close,
 		isOpen = function()
@@ -136,6 +248,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 					child:Destroy()
 				end
 			end
+			table.clear(rowButtons)
 			for i, row in rows do
 				local tappable = row.onTap ~= nil
 				local button = make("TextButton", {
@@ -147,6 +260,13 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 					TextScaled = true,
 					TextXAlignment = Enum.TextXAlignment.Left,
 				}, list) :: TextButton
+				-- The padding comes first: the glass frame behind the text is stretched to make up for it.
+				make("UIPadding", {
+					PaddingTop = UDim.new(0.22, 0),
+					PaddingBottom = UDim.new(0.22, 0),
+					PaddingLeft = UDim.new(0, 14),
+					PaddingRight = UDim.new(0, 14),
+				}, button)
 				-- Rows that cannot be tapped are quiet text; tappable ones are neon / candy buttons.
 				if tappable then
 					UiTheme.styleButton(button, currentTheme, "Sora", 12, false)
@@ -158,17 +278,18 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				if row.color and currentTheme.night then
 					button.TextColor3 = row.color
 				end
-				make("UIPadding", {
-					PaddingTop = UDim.new(0.22, 0),
-					PaddingBottom = UDim.new(0.22, 0),
-					PaddingLeft = UDim.new(0, 14),
-					PaddingRight = UDim.new(0, 14),
-				}, button)
+				button.InputBegan:Connect(beginDrag)
+				table.insert(rowButtons, { button = button, text = row.text, note = row.note == true })
 				local onTap = row.onTap
 				if onTap then
-					button.Activated:Connect(onTap)
+					button.Activated:Connect(function()
+						if moved < 10 then -- a drag is a scroll, not a tap
+							onTap()
+						end
+					end)
 				end
 			end
+			applyTextSize()
 		end,
 	}
 

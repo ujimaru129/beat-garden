@@ -9,6 +9,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Atmosphere = require(script.Atmosphere)
 local Calibrator = require(script.Calibrator)
+local CollectionUI = require(script.CollectionUI)
 local GardenState = require(script.GardenState)
 local MarketUI = require(script.MarketUI)
 local PlotVisuals = require(script.PlotVisuals)
@@ -32,6 +33,7 @@ task.spawn(WorldFx.start) -- waits for the island to arrive
 PromptFilter.start()
 MarketUI.start()
 SpiritUI.start()
+CollectionUI.start()
 TradeUI.start()
 TutorialUI.start()
 

@@ -12,11 +12,14 @@ local DifficultyPicker = require(script.Parent.DifficultyPicker)
 local GardenState = require(script.Parent.GardenState)
 local HarvestFx = require(script.Parent.HarvestFx)
 local ListModal = require(script.Parent.ListModal)
+local SongSelect = require(script.Parent.SongSelect)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local ResultScreen = require(script.Parent.ResultScreen)
 local RhythmRunner = require(script.Parent.RhythmRunner)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
+local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Songs = require(ReplicatedStorage.Shared.Songs)
+local SongArt = require(ReplicatedStorage.Shared.Songs.Art)
 local Toast = require(script.Parent.Toast)
 
 local TendFlow = {}
@@ -82,6 +85,7 @@ function TendFlow.start()
 					points = result.points,
 					stage = result.stage,
 					fraction = result.fraction,
+					favorite = result.favorite,
 				}, function()
 					setPromptsEnabled(true)
 				end)
@@ -101,7 +105,15 @@ function TendFlow.start()
 
 	-- Song picker (Tend, step 1): the player chooses the song, then the difficulty.
 	local advancing = false
-	local songModal = ListModal.create("Choose a song", function()
+	local songSelect: SongSelect.Select
+	songSelect = SongSelect.create(function(item)
+		advancing = true
+		songSelect.close()
+		advancing = false
+		chosenSongId = item.songId
+		picker.setTitle(item.name, `{item.genre}  |  {math.floor(item.bpm + 0.5)} BPM`)
+		picker.setVisible(true)
+	end, function()
 		if advancing then
 			return
 		end
@@ -109,28 +121,32 @@ function TendFlow.start()
 		setPromptsEnabled(true)
 	end)
 	local function openSongPicker()
-		local rows: { ListModal.Row } = {}
-		for _, song in Songs.List do
-			local seconds = math.floor(song.durationMs / 1000 + 0.5)
-			table.insert(rows, {
-				text = `{song.name}   {seconds // 60}:{string.format("%02d", seconds % 60)}`,
-				onTap = function()
-					advancing = true
-					songModal.close()
-					advancing = false
-					chosenSongId = song.songId
-					picker.setTitle(
-						song.name,
-						`BPM {math.floor(song.bpm + 0.5)}  -  {seconds // 60}:{string.format("%02d", seconds % 60)}`
-					)
-					picker.setVisible(true)
-				end,
+		-- The planted seed's favourite genre: songs of that genre are marked and listed first.
+		local snapshot = GardenState.get()
+		local seed = if snapshot and snapshot.plot then Seeds.get(snapshot.plot.seedId) else nil
+		local favorite = if seed then seed.favoriteGenre else nil
+		local songs: { Songs.SongData } = table.clone(Songs.List) :: any
+		table.sort(songs, function(a, b)
+			local fa, fb = a.genre == favorite, b.genre == favorite
+			if fa ~= fb then
+				return fa
+			end
+			return a.name < b.name
+		end)
+		local items: { SongSelect.Item } = {}
+		for _, song in songs do
+			table.insert(items, {
+				songId = song.songId,
+				name = song.name,
+				genre = (Genres.Names :: any)[song.genre].en,
+				bpm = song.bpm,
+				favorite = song.genre == favorite,
+				artAssetId = SongArt[song.songId],
 			})
 		end
-		songModal.setRows(rows)
 		picking = true
 		setPromptsEnabled(false)
-		songModal.open()
+		songSelect.open(items)
 	end
 
 	-- Seed picker (Plant) -------------------------------------------------------------------
@@ -183,7 +199,16 @@ function TendFlow.start()
 		local name = if mutation
 			then `{Mutations.displayName(mutation)} {seedName(result.seedId)}`
 			else seedName(result.seedId)
-		Toast.show(`Harvested {name}!  worth {result.value}`)
+		local discovery = result.discovery
+		if discovery and discovery.isNew then
+			local extra = `  NEW in the book! +{discovery.coins} coins`
+			if (result.completionEggs or 0) > 0 then
+				extra ..= `  Complete! +{result.completionEggs} Spirit Egg`
+			end
+			Toast.show(`Harvested {name}!  worth {result.value}{extra}`)
+		else
+			Toast.show(`Harvested {name}!  worth {result.value}`)
+		end
 		if plot:IsA("BasePart") then
 			HarvestFx.play(plot.Position, mutation)
 		end

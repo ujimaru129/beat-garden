@@ -28,6 +28,14 @@ import make_shorts as m  # noqa: E402
 
 SEG_BEATS = 32
 # Creator Hub asset ids of the uploaded short edits (keep in sync when a song is re-uploaded)
+# Per-song shift of all notes in ms (negative = earlier), found by playing: the audio and the chart can disagree a little
+GENRES = {
+    "kabuki_dance": "Japan",
+    "dard_aur_dhamaka": "Dance",
+    "pastel_trip": "Pop",
+    "kamikaze": "Rock",
+}
+OFFSETS_MS = {"pastel_trip": -25}
 ASSET_IDS = {
     "kabuki_dance": "102174208355987",
     "dard_aur_dhamaka": "76576411777923",
@@ -197,8 +205,9 @@ def main() -> None:
         "return {",
         f'\tsongId = "{song_id}",',
         f'\tname = "{display}",',
+        f'\tgenre = "{GENRES.get(song_id, "Pop")}",',
         f"\tbpm = {info['bpm']},",
-        "\toffsetMs = 0, -- shift all notes if the uploaded audio plays early/late",
+        f"\toffsetMs = {OFFSETS_MS.get(song_id, 0)}, -- shift all notes if the uploaded audio plays early/late (negative = earlier)",
         f"\taudioAssetId = {json.dumps(ASSET_IDS.get(song_id))} :: string?, -- Creator Hub asset id of the uploaded short edit"
         if song_id in ASSET_IDS
         else "\taudioAssetId = nil :: string?, -- Creator Hub asset id once the short edit is uploaded",

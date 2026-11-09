@@ -3,6 +3,7 @@
 -- `sanitize` rebuilds a clean table from whatever was loaded, so missing or damaged fields never
 -- reach the game code. Bump `v` and add a step in `sanitize` when the shape changes.
 
+local Collection = require(script.Parent.Parent.Garden.Collection)
 local Growth = require(script.Parent.Parent.Garden.Growth)
 local Seeds = require(script.Parent.Parent.Garden.Seeds)
 local Spirits = require(script.Parent.Parent.Garden.Spirits)
@@ -30,6 +31,7 @@ export type Data = {
 	equippedSpirit: string?, -- id of the equipped spirit
 	settings: { latencyMs: number },
 	stats: { tends: number, perfects: number, harvests: number },
+	collection: Collection.Book, -- discovered seed x variant entries (Garden/Collection)
 	tutorialStep: number, -- 1..5 = in the tutorial, Tutorial.Done = finished or skipped
 }
 
@@ -58,6 +60,7 @@ function PlayerData.new(): Data
 		equippedSpirit = nil,
 		settings = { latencyMs = 0 },
 		stats = { tends = 0, perfects = 0, harvests = 0 },
+		collection = {},
 		tutorialStep = 1,
 	}
 end
@@ -155,6 +158,14 @@ function PlayerData.sanitize(raw: any): Data
 		data.stats.tends = math.floor(num(raw.stats.tends, 0, 0))
 		data.stats.perfects = math.floor(num(raw.stats.perfects, 0, 0))
 		data.stats.harvests = math.floor(num(raw.stats.harvests, 0, 0))
+	end
+
+	if type(raw.collection) == "table" then
+		for key, value in raw.collection do
+			if type(key) == "string" and value == true and Collection.isValidKey(key) then
+				data.collection[key] = true
+			end
+		end
 	end
 
 	-- Data saved before the tutorial existed: anyone who already has progress skips it.

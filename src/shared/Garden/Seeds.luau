@@ -11,6 +11,7 @@ export type Seed = {
 	price: number, -- coins
 	growSeconds: number,
 	baseSellPrice: number, -- coins, before mutation and weight
+	favoriteGenre: string, -- Shared.Garden.Genres: a song of this genre gives a tend bonus
 }
 
 local Seeds = {}
@@ -25,6 +26,25 @@ local list: { Seed } = {
 		price = 20,
 		growSeconds = 120,
 		baseSellPrice = 30,
+		favoriteGenre = "Pop",
+	},
+	{
+		seedId = "seed_yuzu",
+		name = { en = "Yuzu Punch", ja = "ゆずパンチ" },
+		rarity = "Common",
+		price = 40,
+		growSeconds = 150,
+		baseSellPrice = 62,
+		favoriteGenre = "Rock",
+	},
+	{
+		seedId = "seed_ramune",
+		name = { en = "Ramune Fizz", ja = "ラムネフィズ" },
+		rarity = "Common",
+		price = 55,
+		growSeconds = 150,
+		baseSellPrice = 85,
+		favoriteGenre = "Dance",
 	},
 	{
 		seedId = "seed_matcha",
@@ -33,6 +53,16 @@ local list: { Seed } = {
 		price = 80,
 		growSeconds = 180,
 		baseSellPrice = 110,
+		favoriteGenre = "Japan",
+	},
+	{
+		seedId = "seed_momo",
+		name = { en = "Momo Melody", ja = "ももメロディ" },
+		rarity = "Uncommon",
+		price = 130,
+		growSeconds = 210,
+		baseSellPrice = 190,
+		favoriteGenre = "Pop",
 	},
 	{
 		seedId = "seed_sora",
@@ -41,6 +71,25 @@ local list: { Seed } = {
 		price = 240,
 		growSeconds = 300,
 		baseSellPrice = 350,
+		favoriteGenre = "Dance",
+	},
+	{
+		seedId = "seed_fuji",
+		name = { en = "Fuji Storm", ja = "ふじストーム" },
+		rarity = "Rare",
+		price = 360,
+		growSeconds = 330,
+		baseSellPrice = 540,
+		favoriteGenre = "Rock",
+	},
+	{
+		seedId = "seed_hanabi",
+		name = { en = "Hanabi Burst", ja = "はなびバースト" },
+		rarity = "Epic",
+		price = 900,
+		growSeconds = 420,
+		baseSellPrice = 1700,
+		favoriteGenre = "Japan",
 	},
 }
 Seeds.List = table.freeze(list)

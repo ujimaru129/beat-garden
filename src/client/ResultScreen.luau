@@ -16,6 +16,7 @@ export type Data = {
 	counts: { Perfect: number, Great: number, Good: number, Miss: number },
 	maxCombo: number,
 	points: number,
+	favorite: boolean?, -- the song was the plant's favourite genre
 	stage: string,
 	fraction: number,
 }
@@ -137,7 +138,7 @@ function ResultScreen.show(data: Data, onClose: () -> ())
 	label(panel, {
 		Position = UDim2.fromOffset(16, 8),
 		Size = UDim2.new(1, -32, 0, 26),
-		Text = `{data.songName}  -  {data.difficulty}`,
+		Text = `{data.songName}  -  {data.difficulty}{if data.favorite then "   \u{2665} Favourite song!" else ""}`,
 		Font = Enum.Font.GothamBlack,
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})

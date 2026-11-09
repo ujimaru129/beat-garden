@@ -4,6 +4,7 @@
 return {
 	songId = "kamikaze",
 	name = "Kamikaze",
+	genre = "Rock",
 	bpm = 148.15,
 	offsetMs = 0, -- shift all notes if the uploaded audio plays early/late
 	audioAssetId = "131155520574193" :: string?, -- Creator Hub asset id of the uploaded short edit

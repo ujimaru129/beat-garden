@@ -17,6 +17,7 @@ export type SegmentData = {
 export type SongData = {
 	songId: string,
 	name: string,
+	genre: string, -- Shared.Garden.Genres
 	bpm: number,
 	offsetMs: number,
 	audioAssetId: string?,
@@ -28,6 +29,7 @@ export type SongData = {
 export type Pick = {
 	songId: string,
 	name: string,
+	genre: string,
 	segment: Types.Segment,
 	bpm: number,
 	beatsMs: { number }, -- beats inside the segment (and the lead-in before it)
@@ -75,6 +77,7 @@ function Songs.pick(songId: string, difficulty: string, rng: Random?): Pick?
 	return {
 		songId = song.songId,
 		name = song.name,
+		genre = song.genre,
 		segment = { segment = seg.id, startMs = seg.startMs, notes = notes },
 		bpm = song.bpm,
 		beatsMs = beats,

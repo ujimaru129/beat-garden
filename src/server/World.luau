@@ -20,18 +20,54 @@ export type Tint = { day: Color3, night: Color3, glow: boolean? }
 local ISLAND_RADIUS = 90
 local WALL_HEIGHT = 40
 
--- Pastel candy colours by day and the matching neon colours by night.
+-- Pastel candy colours by day. By night the big bodies turn deep and dark: a large Neon surface blows up into
+-- a blurry blob, so neon is only used for thin "tubes" (rims, rings, rails, strings) - see `tube`.
+export type Candy = { day: Color3, night: Color3, glow: boolean?, neon: Color3 }
+local function candy(day: string, neon: string): Candy
+	local n = hex(neon)
+	return { day = hex(day), night = n:Lerp(Color3.new(0.05, 0.02, 0.15), 0.62), glow = false, neon = n }
+end
 local C = {
-	pink = { day = hex("#FF9CCB"), night = hex("#FF4FA3"), glow = true },
-	sky = { day = hex("#8FD3FF"), night = hex("#3FC8FF"), glow = true },
-	mint = { day = hex("#8CEBC3"), night = hex("#3DFFB0"), glow = true },
-	lemon = { day = hex("#FFE27A"), night = hex("#FFE14D"), glow = true },
-	grape = { day = hex("#C3A1FF"), night = hex("#A86BFF"), glow = true },
+	pink = candy("#FF9CCB", "#FF4FA3"),
+	sky = candy("#8FD3FF", "#3FC8FF"),
+	mint = candy("#8CEBC3", "#3DFFB0"),
+	lemon = candy("#FFE27A", "#FFE14D"),
+	grape = candy("#C3A1FF", "#A86BFF"),
 	-- "white" is a soft cream-pink by day: pure white blows out in the sun
-	white = { day = hex("#FFD9EA"), night = hex("#F4EEFF"), glow = true },
-	peach = { day = hex("#FFB88A"), night = hex("#FF9A4D"), glow = true },
+	white = candy("#FFD9EA", "#F4EEFF"),
+	peach = candy("#FFB88A", "#FF9A4D"),
 }
-local FLOOR_NIGHT = { hex("#1B1140"), hex("#120B30"), hex("#0F1B3A"), hex("#1F1245"), hex("#170C33"), hex("#1B1140") }
+
+-- The thin glowing version of a colour: the same by day, neon by night.
+local function tube(c: Candy): Tint
+	return { day = c.day, night = c.neon, glow = true }
+end
+
+local FLOOR_NIGHT = { hex("#33207A"), hex("#241868"), hex("#1B2A6B"), hex("#3A2480"), hex("#2B1B6E"), hex("#33207A") }
+
+-- Where the player lives: around the spawn, the two shops and the row of plots no prop may stand
+-- (a cupcake on the spawn put the camera inside its frosting).
+local playSpot = Vector3.zero
+local function blocked(x: number, z: number): boolean
+	local dx, dz = x - playSpot.X, z - playSpot.Z
+	if dx * dx + dz * dz < 30 * 30 then
+		return true
+	end
+	-- the strip the plots stand on (they run along +X, 10 studs behind the spawn)
+	return dz > -26 and dz < 10 and dx > -34 and dx < 125
+end
+
+-- An angle around `center` at `radius` whose spot is free; tries the given angle first.
+local function freeAngle(center: Vector3, angle: number, radius: number, rng: Random): number
+	local a = angle
+	for _ = 1, 60 do
+		if not blocked(center.X + math.cos(a) * radius, center.Z + math.sin(a) * radius) then
+			return a
+		end
+		a = rng:NextNumber(0, math.pi * 2)
+	end
+	return a
+end
 
 local function newPart(props: { [string]: any }, parent: Instance, tint: Tint?): Part
 	local p = Instance.new("Part")
@@ -130,14 +166,7 @@ local function buildFloor(root: Folder, center: Vector3, top: number)
 	for i, band in bands do
 		local level = top + 0.04 * i
 		-- A slightly larger disc under each band: invisible by day (same colour), a neon edge at night.
-		disc(
-			root,
-			center,
-			band.radius + 0.5,
-			level - 0.02,
-			0.2,
-			{ day = band.tint.day, night = band.tint.night, glow = true }
-		)
+		disc(root, center, band.radius + 0.5, level - 0.02, 0.2, tube(band.tint))
 		-- The band itself: by day the pastel colour, at night a deep colour.
 		local d = disc(root, center, band.radius, level, if i == 1 then 4 else 0.4, {
 			day = band.tint.day,
@@ -145,6 +174,7 @@ local function buildFloor(root: Folder, center: Vector3, top: number)
 			glow = false,
 		}, i == 1)
 		d.Name = `Floor{i}`
+		CollectionService:AddTag(d, "WorldFloor") -- stays visible during a rhythm run; everything else hides
 		d.Material = Enum.Material.SmoothPlastic
 	end
 	-- Cake layers under the island, so it reads as a floating cake from the side.
@@ -171,11 +201,11 @@ local function buildFence(root: Folder, center: Vector3, top: number)
 		local base = Vector3.new(pos.X, top + 0.4, pos.Z)
 		local red = if i % 2 == 0 then C.pink else C.sky
 		column(root, base, 0.7, 6, C.white)
-		local band = column(root, base + Vector3.new(0, 1.2, 0), 0.75, 1.1, red)
+		local band = column(root, base + Vector3.new(0, 1.2, 0), 0.75, 1.1, tube(red))
 		band.Name = "FenceBand"
-		local band2 = column(root, base + Vector3.new(0, 3.6, 0), 0.75, 1.1, red)
+		local band2 = column(root, base + Vector3.new(0, 3.6, 0), 0.75, 1.1, tube(red))
 		band2.Name = "FenceBand"
-		ball(root, base + Vector3.new(0, 6.3, 0), 0.9, red)
+		ball(root, base + Vector3.new(0, 6.3, 0), 0.9, tube(red))
 		-- invisible wall segment between this post and the next
 		local nextAngle = (i + 0.5) / count * math.pi * 2
 		local wallPos = center
@@ -199,6 +229,7 @@ local function buildLollipops(root: Folder, center: Vector3, top: number, rng: R
 	for i = 1, count do
 		local angle = (i / count) * math.pi * 2 + rng:NextNumber(-0.15, 0.15)
 		local radius = ISLAND_RADIUS * rng:NextNumber(0.62, 0.84)
+		angle = freeAngle(center, angle, radius, rng)
 		local base = Vector3.new(center.X + math.cos(angle) * radius, top + 0.4, center.Z + math.sin(angle) * radius)
 		local height = rng:NextNumber(14, 22)
 		local headRadius = rng:NextNumber(5.5, 8)
@@ -218,6 +249,13 @@ local function buildLollipops(root: Folder, center: Vector3, top: number, rng: R
 			tag(p, "Pulse", { PulseAmount = 0.08 })
 			return p
 		end
+		-- a thin neon rim around the head (the body itself goes dark at night)
+		local rim = newPart({
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.5, headRadius * 2 + 1.2, headRadius * 2 + 1.2),
+			CFrame = facing * CFrame.new(0, 0, 0.3) * CFrame.Angles(0, math.rad(90), 0),
+		}, root, tube(a))
+		rim.Name = "LollipopRim"
 		head(headRadius, 0, a)
 		head(headRadius * 0.72, 0.4, C.white)
 		head(headRadius * 0.5, 0.8, b)
@@ -232,12 +270,14 @@ local function buildCupcakes(root: Folder, center: Vector3, top: number, rng: Ra
 	for i = 1, count do
 		local angle = (i / count) * math.pi * 2 + math.pi / count
 		local radius = ISLAND_RADIUS * rng:NextNumber(0.4, 0.55)
+		angle = freeAngle(center, angle, radius, rng)
 		local base = Vector3.new(center.X + math.cos(angle) * radius, top + 0.4, center.Z + math.sin(angle) * radius)
 		local size = rng:NextNumber(0.9, 1.3)
 		column(root, base, 4.4 * size, 5 * size, C.peach)
 		local top1 = ball(root, base + Vector3.new(0, 6.2 * size, 0), 5.2 * size, frosting[i % #frosting + 1])
 		local top2 = ball(root, base + Vector3.new(0, 9.4 * size, 0), 3.4 * size, frosting[(i + 1) % #frosting + 1])
-		local cherry = ball(root, base + Vector3.new(0, 12.2 * size, 0), 1.3 * size, C.pink)
+		local cherry = ball(root, base + Vector3.new(0, 12.2 * size, 0), 1.3 * size, tube(C.pink))
+		disc(root, base, 4.9 * size, base.Y + 0.1, 0.2, tube(frosting[i % #frosting + 1]))
 		tag(top1, "Pulse", { PulseAmount = 0.06 })
 		tag(top2, "Pulse", { PulseAmount = 0.1 })
 		tag(cherry, "Pulse", { PulseAmount = 0.2 })
@@ -250,6 +290,7 @@ local function buildMacarons(root: Folder, center: Vector3, top: number, rng: Ra
 	for i = 1, 5 do
 		local angle = (i / 5) * math.pi * 2 + 0.4
 		local radius = ISLAND_RADIUS * rng:NextNumber(0.25, 0.36)
+		angle = freeAngle(center, angle, radius, rng)
 		local radiusM = rng:NextNumber(4.5, 6)
 		local base =
 			Vector3.new(center.X + math.cos(angle) * radius, top + 0.4 + radiusM, center.Z + math.sin(angle) * radius)
@@ -266,7 +307,7 @@ local function buildMacarons(root: Folder, center: Vector3, top: number, rng: Ra
 			Shape = Enum.PartType.Cylinder,
 			Size = Vector3.new(1.4, radiusM * 1.85, radiusM * 1.85),
 			CFrame = face * CFrame.Angles(0, math.rad(90), 0),
-		}, root, C.white)
+		}, root, tube(C.white))
 	end
 end
 
@@ -276,6 +317,7 @@ local function buildGumdrops(root: Folder, center: Vector3, top: number, rng: Ra
 	for i = 1, 22 do
 		local angle = rng:NextNumber(0, math.pi * 2)
 		local radius = ISLAND_RADIUS * math.sqrt(rng:NextNumber(0.04, 0.9))
+		angle = freeAngle(center, angle, radius, rng)
 		local r = rng:NextNumber(1.8, 4.2)
 		local p = ball(
 			root,
@@ -284,17 +326,19 @@ local function buildGumdrops(root: Folder, center: Vector3, top: number, rng: Ra
 			colors[i % #colors + 1]
 		)
 		tag(p, "Pulse", { PulseAmount = 0.12 })
+		disc(root, Vector3.new(p.Position.X, 0, p.Position.Z), r + 0.5, top + 0.45, 0.1, tube(colors[i % #colors + 1]))
 	end
 end
 
 -- Balloons: floating balls on a string; they bob and sway.
 local function buildBalloons(root: Folder, center: Vector3, top: number, rng: Random)
 	local colors = { C.pink, C.sky, C.mint, C.lemon, C.grape }
-	for i = 1, 14 do
+	for i = 1, 44 do
 		local angle = rng:NextNumber(0, math.pi * 2)
-		local radius = ISLAND_RADIUS * rng:NextNumber(0.3, 0.92)
+		local radius = ISLAND_RADIUS * rng:NextNumber(0.25, 0.94)
+		angle = freeAngle(center, angle, radius, rng)
 		local x, z = center.X + math.cos(angle) * radius, center.Z + math.sin(angle) * radius
-		local height = rng:NextNumber(20, 42)
+		local height = rng:NextNumber(14, 52)
 		local r = rng:NextNumber(2.8, 4)
 		local b = ball(root, Vector3.new(x, top + height, z), r, colors[i % #colors + 1])
 		b.Name = "Balloon"
@@ -307,9 +351,8 @@ local function buildBalloons(root: Folder, center: Vector3, top: number, rng: Ra
 		local string_ = newPart({
 			Size = Vector3.new(0.12, height - r, 0.12),
 			Position = Vector3.new(x, top + (height - r) / 2, z),
-			Color = Color3.new(1, 1, 1),
 			Transparency = 0.3,
-		}, root)
+		}, root, tube(colors[i % #colors + 1]))
 		string_.Name = "BalloonString"
 	end
 end
@@ -378,6 +421,8 @@ local function buildSky(root: Folder, center: Vector3, top: number)
 		beam.LightEmission = 0.5
 		beam.Transparency = NumberSequence.new(0.1)
 		beam.Parent = left
+		-- By day a fat pastel arch; by night thin bright tubes (the client swaps the widths).
+		tag(beam, "RainbowBeam", { DayWidth = 3.8, NightWidth = 0.7 })
 	end
 
 	-- Disco ball: hangs over the plot row; spins; at night it throws light beams (see WorldFx).
@@ -391,11 +436,10 @@ local function buildSky(root: Folder, center: Vector3, top: number)
 		Name = "DiscoString",
 		Size = Vector3.new(0.2, 40, 0.2),
 		Position = ballPos + Vector3.new(0, 26, 0),
-		Color = hex("#FFFFFF"),
-	}, root)
+	}, root, { day = hex("#FFFFFF"), night = hex("#FFFFFF"), glow = true })
 	-- Light shafts from the ball down to the floor, each ending in an orbiting point.
-	for i = 1, 6 do
-		local color = ({ C.pink, C.sky, C.mint, C.lemon, C.grape, C.white })[i]
+	for i = 1, 12 do
+		local color = ({ C.pink, C.sky, C.mint, C.lemon, C.grape, C.white })[(i - 1) % 6 + 1]
 		local target = newPart({
 			Name = "ShaftEnd",
 			Transparency = 1,
@@ -403,9 +447,9 @@ local function buildSky(root: Folder, center: Vector3, top: number)
 		}, root)
 		tag(target, "Orbit", {
 			OrbitCenter = Vector3.new(ballPos.X, top + 0.6, ballPos.Z),
-			OrbitRadius = 20 + (i % 3) * 10,
-			OrbitSpeed = (if i % 2 == 0 then 1 else -1) * (0.4 + i * 0.05),
-			OrbitPhase = i / 6 * math.pi * 2,
+			OrbitRadius = 10 + (i % 4) * 11,
+			OrbitSpeed = (if i % 2 == 0 then 1 else -1) * (0.35 + i * 0.06),
+			OrbitPhase = i / 12 * math.pi * 2,
 		})
 		local top0 = newPart({ Name = "ShaftStart", Transparency = 1, Position = ballPos }, root)
 		local s0 = Instance.new("Attachment")
@@ -416,12 +460,12 @@ local function buildSky(root: Folder, center: Vector3, top: number)
 		beam.Name = "Shaft"
 		beam.Attachment0 = s0
 		beam.Attachment1 = s1
-		beam.Color = ColorSequence.new(color.night)
-		beam.Width0 = 0.6
-		beam.Width1 = 7
+		beam.Color = ColorSequence.new(color.neon)
+		beam.Width0 = 0.15
+		beam.Width1 = 0.35
 		beam.FaceCamera = true
 		beam.LightEmission = 1
-		beam.Transparency = NumberSequence.new(0.65)
+		beam.Transparency = NumberSequence.new(0.05)
 		beam.Enabled = false
 		beam.Parent = top0
 		tag(beam, "NightOnly")
@@ -434,6 +478,7 @@ function World.start()
 	root.Parent = Workspace
 
 	local spawn = spawnPosition()
+	playSpot = spawn
 	local top = groundTop()
 	-- Centred on the plot row (plots run along +X at -Z from the spawn) and the shops on the other side.
 	local center = Vector3.new(spawn.X + 35, top, spawn.Z - 5)

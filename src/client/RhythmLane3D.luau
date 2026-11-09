@@ -216,6 +216,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 
 	-- Board: one dark strip per lane, a neon hit line and a tap pad that flashes on hits.
 	local pads: { BasePart } = {}
+	local beams: { BasePart } = {}
 	for lane = 0, 3 do
 		local color = laneColor(lane)
 		-- The lane floor: tinted glass in the lane's colour (pastel by day, deep neon-tinted by night), made of
@@ -265,6 +266,15 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		pad.Material = Enum.Material.Neon
 		pad.Transparency = 1
 		pads[lane + 1] = make("Part", pad, folder)
+
+		-- A beam of light up the lane while a key is pressed (and a button flash, see pressFx).
+		local beam = solidProps(color:Lerp(Color3.new(1, 1, 1), 0.4))
+		beam.Name = `Beam{lane}`
+		beam.Size = Vector3.new(LANE_WIDTH - 0.15, 0.12, 16)
+		beam.CFrame = origin * CFrame.new(laneX(lane), 0.32, -8)
+		beam.Material = Enum.Material.SmoothPlastic
+		beam.Transparency = 1
+		beams[lane + 1] = make("Part", beam, folder)
 	end
 
 	-- One piece per note, created up front (segments are short).
@@ -395,6 +405,8 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	}, gui)
 	make("UISizeConstraint", { MaxSize = Vector2.new(520, 200) }, buttonRow)
 	local laneButtons: { [number]: TextButton } = {}
+	local laneGlows: { [number]: Frame } = {}
+	local laneScales: { [number]: UIScale } = {}
 	for lane = 0, 3 do
 		local button = make("TextButton", {
 			Position = UDim2.fromScale(lane / 4, 0),
@@ -406,6 +418,19 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		make("UITextSizeConstraint", { MaxTextSize = 30 }, button)
 		laneButtons[lane] = button
 		UiTheme.styleButton(button, theme, Palette.LaneOrder[lane + 1])
+		-- Press feedback: a bright flash over the button and a quick squash.
+		local glow = make("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Palette.hue(Palette.LaneOrder[lane + 1], "Night"):Lerp(Color3.new(1, 1, 1), 0.65),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Active = false,
+			ZIndex = 30,
+		}, button) :: Frame
+		make("UICorner", { CornerRadius = UDim.new(0, 14) }, glow)
+		make("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 3, Transparency = 1 }, glow)
+		laneGlows[lane] = glow
+		laneScales[lane] = make("UIScale", {}, button) :: UIScale
 		button.InputBegan:Connect(function(input: InputObject)
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
@@ -559,17 +584,74 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end)
 	end
 
+	-- Tap feedback, whether or not a note was hit: the button flashes and squashes, a beam lights the lane.
+	local function pressFx(lane: number)
+		local glow = laneGlows[lane]
+		local scale = laneScales[lane]
+		if glow then
+			glow.BackgroundTransparency = 0.25
+			local stroke = glow:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Transparency = 0
+				TweenService:Create(stroke, TweenInfo.new(0.3), { Transparency = 1 }):Play()
+			end
+			TweenService:Create(glow, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				BackgroundTransparency = 1,
+			}):Play()
+		end
+		if scale then
+			scale.Scale = 0.88
+			TweenService:Create(scale, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Scale = 1,
+			}):Play()
+		end
+		local beam = beams[lane + 1]
+		if beam then
+			beam.Transparency = 0.4
+			TweenService:Create(beam, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transparency = 1,
+			}):Play()
+		end
+	end
+
+	-- A ring bursts out of the hit line when a note is hit, in the colour of the judgement.
+	local function hitFx(lane: number, judgement: string)
+		local ring = make("Part", {
+			Anchored = true,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = false,
+			CastShadow = false,
+			Shape = Enum.PartType.Cylinder,
+			Material = Enum.Material.SmoothPlastic,
+			Color = (JUDGEMENT_COLORS :: any)[judgement] or Color3.new(1, 1, 1),
+			Transparency = 0.15,
+			Size = Vector3.new(0.12, 1.2, 1.2),
+			CFrame = origin * CFrame.new(laneX(lane), 0.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		}, folder) :: Part
+		local big = if judgement == "Perfect" then 5.5 else 4
+		TweenService:Create(ring, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = Vector3.new(0.12, big, big),
+			Transparency = 1,
+		}):Play()
+		task.delay(0.4, function()
+			ring:Destroy()
+		end)
+	end
+
 	local finished = false
 	onTap = function(lane: number)
 		if finished then
 			return
 		end
+		pressFx(lane)
 		local hit, misses = session:hit(lane, getSongTimeMs())
 		for _, m in misses do
 			showResult(m)
 		end
 		if hit then
 			showResult(hit)
+			hitFx(lane, hit.judgement)
 		end
 	end
 

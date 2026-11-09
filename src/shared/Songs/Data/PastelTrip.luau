@@ -4,8 +4,9 @@
 return {
 	songId = "pastel_trip",
 	name = "Pastel Trip",
+	genre = "Pop",
 	bpm = 99.6,
-	offsetMs = 0, -- shift all notes if the uploaded audio plays early/late
+	offsetMs = -25, -- shift all notes if the uploaded audio plays early/late (negative = earlier)
 	audioAssetId = "86433689428068" :: string?, -- Creator Hub asset id of the uploaded short edit
 	durationMs = 89720,
 	beatsMs = {

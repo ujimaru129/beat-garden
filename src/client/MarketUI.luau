@@ -7,12 +7,15 @@
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 local GardenState = require(script.Parent.GardenState)
 local ListModal = require(script.Parent.ListModal)
+local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
+local Shop = require(ReplicatedStorage.Shared.Garden.Shop)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Toast = require(script.Parent.Toast)
 local UiTheme = require(script.Parent.UiTheme)
@@ -37,10 +40,14 @@ local function shopRows(
 	buyEgg: () -> ()
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
-	for _, seed in Seeds.List do
+	-- The stock changes every few minutes; it is worked out from the server clock, like on the server.
+	local stock = Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())))
+	for _, seedId in stock do
+		local seed = Seeds.get(seedId) :: Seeds.Seed
 		local own = snapshot.seeds[seed.seedId] or 0
+		local genre = (Genres.Names :: any)[seed.favoriteGenre]
 		table.insert(rows, {
-			text = `Buy {seed.name.en}  {seed.price}   (you have {own})`,
+			text = `{seed.name.en}  {seed.price}   ({own})   {seed.rarity}  \u{2665} {genre.en}`,
 			color = if snapshot.coins >= seed.price then Palette.Hues.Matcha.Night else Palette.Rarity.Common,
 			onTap = function()
 				buy(seed.seedId)
@@ -57,7 +64,7 @@ local function shopRows(
 	for _, o in Spirits.odds() do
 		table.insert(odds, `{(Spirits.get(o.kind) :: Spirits.Def).name.en} {o.percent}%`)
 	end
-	table.insert(rows, { text = `Egg hatches into: {table.concat(odds, ", ")}` })
+	table.insert(rows, { note = true, text = `Egg hatches into: {table.concat(odds, ", ")}` })
 	return rows
 end
 
@@ -140,10 +147,31 @@ function MarketUI.start()
 	local shop = ListModal.create("Shop", onClose)
 	local market = ListModal.create("Market", onClose)
 
+	local function shopTitle(coins: number): string
+		local left = Shop.secondsLeft(math.floor(Workspace:GetServerTimeNow()))
+		return `Shop  {coins} coins  new stock {left // 60}:{string.format("%02d", left % 60)}`
+	end
+	local shownStock = ""
 	local function rebuildShop(snapshot: GardenState.Snapshot)
-		shop.setTitle(`Shop   {snapshot.coins} coins`)
+		shop.setTitle(shopTitle(snapshot.coins))
+		shownStock = table.concat(Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow()))), ",")
 		shop.setRows(shopRows(snapshot, buy, buyEgg))
 	end
+	-- While the shop is open the countdown ticks, and the rows are rebuilt when the stock changes.
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			local snapshot = GardenState.get()
+			if snapshot and shop.isOpen() then
+				local now = Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())))
+				if table.concat(now, ",") ~= shownStock then
+					rebuildShop(snapshot)
+				else
+					shop.setTitle(shopTitle(snapshot.coins))
+				end
+			end
+		end
+	end)
 	local function rebuildMarket(snapshot: GardenState.Snapshot)
 		market.setTitle(`Market   {snapshot.coins} coins`)
 		market.setRows(sellRows(snapshot, sellAll))

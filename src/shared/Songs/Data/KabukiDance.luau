@@ -4,6 +4,7 @@
 return {
 	songId = "kabuki_dance",
 	name = "Kabuki Dance",
+	genre = "Japan",
 	bpm = 150.05,
 	offsetMs = 0, -- shift all notes if the uploaded audio plays early/late
 	audioAssetId = "102174208355987" :: string?, -- Creator Hub asset id of the uploaded short edit

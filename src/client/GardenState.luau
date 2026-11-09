@@ -21,6 +21,7 @@ export type Snapshot = {
 	eggs: number,
 	spirits: { { id: string, kind: string } },
 	equippedSpirit: string?,
+	collection: { [string]: boolean },
 }
 
 local current: Snapshot? = nil

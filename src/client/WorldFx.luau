@@ -7,6 +7,7 @@
 -- Nothing here is gameplay: it is all local and cosmetic.
 
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -26,9 +27,12 @@ function WorldFx.start()
 	local centerAttr = root:GetAttribute("Center")
 	local center: Vector3 = if typeof(centerAttr) == "Vector3" then centerAttr else Vector3.zero
 
+	local player = Players.LocalPlayer :: Player
 	local night = Atmosphere.timeOfDay() == "Night"
+	local running = player:GetAttribute("InRhythm") == true
 	local tinted: { Part } = {}
 	local beams: { Beam } = {}
+	local rainbow: { Beam } = {}
 	local spinners: { { part: Part, base: CFrame, speed: number } } = {}
 	local bobbers: { { part: Part, base: Vector3, amount: number, speed: number, phase: number } } = {}
 	local orbiters: { { part: Part, center: Vector3, radius: number, speed: number, phase: number } } = {}
@@ -59,7 +63,32 @@ function WorldFx.start()
 		end)
 	end
 
+	local function setRainbowWidth(beam: Beam)
+		local dayWidth, nightWidth = beam:GetAttribute("DayWidth"), beam:GetAttribute("NightWidth")
+		local width = if night then nightWidth else dayWidth
+		if type(width) == "number" then
+			beam.Width0 = width
+			beam.Width1 = width
+		end
+		beam.LightEmission = if night then 1 else 0.5
+	end
+
+	-- During a rhythm run only the floor stays: props, beams and neon rims would clutter the lane.
+	local function applyRun(inst: Instance)
+		if inst:IsA("BasePart") and not CollectionService:HasTag(inst, "WorldFloor") then
+			inst.LocalTransparencyModifier = if running then 1 else 0
+		elseif inst:IsA("Beam") then
+			inst.Enabled = not running and (night or not CollectionService:HasTag(inst, "NightOnly"))
+		end
+	end
+
 	local function track(inst: Instance)
+		applyRun(inst)
+		if inst:IsA("Beam") and CollectionService:HasTag(inst, "RainbowBeam") then
+			table.insert(rainbow, inst)
+			setRainbowWidth(inst)
+			return
+		end
 		if inst:IsA("Beam") and CollectionService:HasTag(inst, "NightOnly") then
 			inst.Enabled = night
 			table.insert(beams, inst)
@@ -114,6 +143,13 @@ function WorldFx.start()
 	end
 	root.DescendantAdded:Connect(track)
 
+	player:GetAttributeChangedSignal("InRhythm"):Connect(function()
+		running = player:GetAttribute("InRhythm") == true
+		for _, inst in root:GetDescendants() do
+			applyRun(inst)
+		end
+	end)
+
 	-- Day <-> night: the neon switches on (or off) as a ripple from the middle of the island.
 	task.spawn(function()
 		while true do
@@ -125,7 +161,10 @@ function WorldFx.start()
 					setTint(part, true)
 				end
 				for _, beam in beams do
-					beam.Enabled = night
+					beam.Enabled = night and not running
+				end
+				for _, beam in rainbow do
+					setRainbowWidth(beam)
 				end
 			end
 		end

@@ -14,7 +14,9 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
+local Collection = require(ReplicatedStorage.Shared.Garden.Collection)
 local Economy = require(ReplicatedStorage.Shared.Garden.Economy)
+local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Growth = require(ReplicatedStorage.Shared.Garden.Growth)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Npcs = require(script.Parent.Npcs)
@@ -23,6 +25,7 @@ local PlayerData = require(ReplicatedStorage.Shared.Data.PlayerData)
 local PlayerStore = require(script.Parent.PlayerStore)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
+local Shop = require(ReplicatedStorage.Shared.Garden.Shop)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Trading = require(script.Parent.Trading)
 local Songs = require(ReplicatedStorage.Shared.Songs)
@@ -56,6 +59,7 @@ type Pending = {
 	startedAt: number,
 	difficulty: Difficulty.Name,
 	songName: string,
+	favorite: boolean, -- the song's genre is the planted seed's favourite
 }
 
 type Session = {
@@ -136,6 +140,7 @@ local function snapshot(s: Session): any
 		eggs = d.eggs,
 		spirits = table.clone(d.spirits),
 		equippedSpirit = d.equippedSpirit,
+		collection = table.clone(d.collection),
 	}
 end
 
@@ -299,6 +304,7 @@ local function tendBegin(s: Session, payload: unknown): any
 		startedAt = os.clock(),
 		difficulty = difficulty,
 		songName = picked.name,
+		favorite = seedOf(plot).favoriteGenre == picked.genre,
 	}
 	return {
 		ok = true,
@@ -308,6 +314,7 @@ local function tendBegin(s: Session, payload: unknown): any
 		songName = picked.name,
 		audioAssetId = picked.audioAssetId,
 		offsetMs = picked.offsetMs,
+		favorite = (s.pending :: Pending).favorite,
 		difficulty = difficulty,
 	}
 end
@@ -332,6 +339,11 @@ local function tendSubmit(s: Session, payload: unknown): any
 	local tally = result.tally
 	local points = Growth.tendPoints(tally.accuracy, pending.difficulty)
 	local mutationMult = Difficulty.MutationChanceMultiplier[pending.difficulty]
+	if pending.favorite then
+		-- the plant's favourite genre: grows faster and mutates more easily
+		points = math.round(points * Genres.GrowthBonus)
+		mutationMult *= Genres.MutationBonus
+	end
 	local now = os.time()
 	Growth.applyTend(plot, points, tally.maxPerfectStreak, mutationMult, now)
 	local d = data(s)
@@ -355,6 +367,7 @@ local function tendSubmit(s: Session, payload: unknown): any
 		fraction = fraction,
 		cooldown = COOLDOWN_SECONDS,
 		songName = pending.songName,
+		favorite = pending.favorite,
 		rank = Rank.forAccuracy(tally.accuracy),
 		score = Rank.score(tally.accuracy),
 		counts = tally.counts,
@@ -415,6 +428,14 @@ local function harvest(s: Session): any
 	local weight = Economy.rollWeight(math.random)
 	table.insert(d.fruits, { seedId = plot.seedId, mutation = mutation, weight = weight })
 	d.stats.harvests += 1
+	-- The collection book: a first-time variant pays coins; a complete seed pays an egg.
+	local discovery = Collection.discover(d.collection, plot.seedId, mutation)
+	if discovery.isNew then
+		d.coins += discovery.coins
+		if discovery.completedSeed then
+			d.eggs += Collection.CompletionEggs
+		end
+	end
 	d.plots[PLOT_KEY] = nil
 	advanceTutorial(s, "harvest")
 	refresh(s)
@@ -422,13 +443,24 @@ local function harvest(s: Session): any
 
 	local value = Economy.fruitValue(plot.seedId, mutation, weight)
 	print(`[Garden] {s.player.Name}: harvested {plot.seedId} mutation={mutation} weight={weight} value={value}`)
-	return { ok = true, seedId = plot.seedId, mutation = mutation, weight = weight, value = value }
+	return {
+		ok = true,
+		seedId = plot.seedId,
+		mutation = mutation,
+		weight = weight,
+		value = value,
+		discovery = discovery,
+		completionEggs = if discovery.isNew and discovery.completedSeed then Collection.CompletionEggs else 0,
+	}
 end
 
 local function buy(s: Session, payload: unknown): any
 	local seed = if type(payload) == "string" then Seeds.get(payload) else nil
 	if not seed then
 		return fail("unknown seed")
+	end
+	if not Shop.inStock(seed.seedId, os.time()) then
+		return fail("not in stock right now")
 	end
 	local d = data(s)
 	if d.coins < seed.price then
