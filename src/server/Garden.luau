@@ -31,6 +31,8 @@ local Progression = require(ReplicatedStorage.Shared.Garden.Progression)
 local Rush = require(ReplicatedStorage.Shared.Garden.Rush)
 local Shop = require(ReplicatedStorage.Shared.Garden.Shop)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
+local Leaderboard = require(ReplicatedStorage.Shared.Garden.Leaderboard)
+local Leaderboards = require(script.Parent.Leaderboards)
 local PlantLook = require(script.Parent.PlantLook)
 local Trading = require(script.Parent.Trading)
 local Songs = require(ReplicatedStorage.Shared.Songs)
@@ -1169,6 +1171,8 @@ function Garden.start()
 			return skipTutorial(s)
 		elseif action == "devReset" then
 			return devReset(s)
+		elseif action == "leaderboard" then
+			return { ok = true, boards = Leaderboards.snapshot() }
 		elseif action == "devGrow" then
 			return devGrow(s)
 		elseif action == "devLevelUp" then
@@ -1251,6 +1255,15 @@ function Garden.start()
 				sinceSave = 0
 				for _, s in sessions do
 					task.spawn(PlayerStore.save, s.store, false)
+					if s.store.persistent then
+						for _, board in Leaderboard.Boards do
+							Leaderboards.submit(
+								s.player.UserId,
+								board,
+								Leaderboard.valueFor(board, data(s).xp, data(s).collection)
+							)
+						end
+					end
 				end
 			end
 		end
