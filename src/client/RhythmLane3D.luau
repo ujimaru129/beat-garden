@@ -14,6 +14,7 @@ local Workspace = game:GetService("Workspace")
 
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
+local HitSounds = require(script.Parent.HitSounds)
 local RhythmOverlay = require(script.Parent.RhythmOverlay)
 local UiTheme = require(script.Parent.UiTheme)
 
@@ -681,6 +682,8 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end)
 	end
 
+	local hitSounds = HitSounds.create(folder)
+
 	local finished = false
 	onTap = function(lane: number)
 		if finished then
@@ -695,6 +698,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			showResult(hit)
 			if hit.judgement ~= "Miss" then
 				hitFx(lane, hit.judgement)
+				hitSounds.play(hit.judgement)
 			end
 		end
 	end

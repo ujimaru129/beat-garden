@@ -51,6 +51,15 @@ function Mutations.multiplier(name: string?): number
 	return 1
 end
 
+function Mutations.isMutation(name: string): boolean
+	for _, def in defs do
+		if def.id == name then
+			return true
+		end
+	end
+	return false
+end
+
 -- "GoldenHour" -> "Golden Hour"
 function Mutations.displayName(name: string): string
 	return (string.gsub(name, "(%l)(%u)", "%1 %2"))

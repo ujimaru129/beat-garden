@@ -45,7 +45,12 @@ function WorldFx.start()
 			return
 		end
 		local target = if night then nightColor else day
-		local material = if night and part:GetAttribute("Glow") == true
+		-- Only thin things glow as Neon: a big Neon body blows up into a blurry blob.
+		local size = part.Size
+		local thin = math.min(size.X, size.Y, size.Z) <= 3 and math.max(size.X, size.Y, size.Z) <= 14
+		local material = if night
+				and thin
+				and part:GetAttribute("Glow") == true
 			then Enum.Material.Neon
 			else Enum.Material.SmoothPlastic
 		if not animate then

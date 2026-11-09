@@ -32,9 +32,9 @@ return function(loader, expect)
 			"hatch odds follow the weights and add up to 100%",
 			function()
 				expect(Spirits.hatch(constant(0))).toBe("Mochi")
-				expect(Spirits.hatch(constant(0.69))).toBe("Mochi")
-				expect(Spirits.hatch(constant(0.71))).toBe("Kitsune")
-				expect(Spirits.hatch(constant(0.999))).toBe("Kitsune")
+				expect(Spirits.hatch(constant(0.23))).toBe("Mochi")
+				expect(Spirits.hatch(constant(0.25))).toBe("Kitsune")
+				expect(Spirits.hatch(constant(0.999))).toBe("Yoru")
 				local sum = 0
 				for _, o in Spirits.odds() do
 					sum += o.percent

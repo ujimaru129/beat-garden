@@ -57,7 +57,7 @@ local PRESETS = {
 			Brightness = -0.03,
 		},
 		-- Tight, strong glow: a wide bloom turns neon into a blur; a small one keeps tubes and lasers crisp.
-		bloom = { Intensity = 1.1, Size = 9, Threshold = 0.9 },
+		bloom = { Intensity = 0.25, Size = 5, Threshold = 1.3 },
 		atmosphere = {
 			Density = 0.18,
 			Color = Palette.Base.YoruSky,

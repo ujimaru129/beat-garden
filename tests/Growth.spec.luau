@@ -60,5 +60,27 @@ return function(loader, expect)
 				expect(Growth.cooldownLeft(plot(0, 0, 1000), 1004, 10)).toBe(6)
 			end,
 		},
+		{
+			"a ripe fruit stays fresh, then shrivels to the floor and stays there",
+			function()
+				-- planted at 0, no care, 1000 s to grow: ripe at 1000
+				local p = plot(0, 0, 0)
+				expect(Growth.readyAt(p, 1000)).toBe(1000)
+				expect(Growth.freshness(p, 1000, 1000 + Growth.FreshSeconds)).toBe(1)
+				local half = 1000 + Growth.FreshSeconds + Growth.RotSeconds / 2
+				expect(Growth.freshness(p, 1000, half)).toBeNear((1 + Growth.MinFreshness) / 2, 1e-6)
+				expect(Growth.freshness(p, 1000, 1e9)).toBe(Growth.MinFreshness)
+			end,
+		},
+		{
+			"care brings the ripe time forward",
+			function()
+				local p = plot(0, 0, 0)
+				p.careGauge = 400
+				expect(Growth.readyAt(p, 1000)).toBe(600)
+				p.careGauge = 5000
+				expect(Growth.readyAt(p, 1000)).toBe(0)
+			end,
+		},
 	}
 end

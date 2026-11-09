@@ -23,12 +23,13 @@ export type Tint = { day: Color3, night: Color3, glow: boolean? }
 local ISLAND_RADIUS = 125
 local WALL_HEIGHT = 40
 
--- Pastel candy colours by day. By night the big bodies turn deep and dark: a large Neon surface blows up into
--- a blurry blob, so neon is only used for thin "tubes" (rims, rings, rails, strings) - see `tube`.
+-- Pastel candy colours by day. By night the big bodies turn deep, saturated and glow softly: a large Neon surface
+-- in a bright colour blows up into a blurry blob, so the body colours are kept dark enough for the glow to stay
+-- gentle, and the thin "tubes" (rims, rings, rails, strings) carry the bright neon - see `tube`.
 export type Candy = { day: Color3, night: Color3, glow: boolean?, neon: Color3 }
 local function candy(day: string, neon: string): Candy
 	local n = hex(neon)
-	return { day = hex(day), night = n:Lerp(Color3.new(0.05, 0.02, 0.15), 0.62), glow = false, neon = n }
+	return { day = hex(day), night = n:Lerp(Color3.new(0.1, 0.05, 0.28), 0.28), glow = true, neon = n }
 end
 local C = {
 	pink = candy("#FF9CCB", "#FF4FA3"),
@@ -43,7 +44,7 @@ local C = {
 
 -- The thin glowing version of a colour: the same by day, neon by night.
 local function tube(c: Candy): Tint
-	return { day = c.day, night = c.neon, glow = true }
+	return { day = c.day, night = c.neon:Lerp(Color3.new(0.1, 0.05, 0.28), 0.22), glow = true }
 end
 
 local FLOOR_NIGHT = { hex("#33207A"), hex("#241868"), hex("#1B2A6B"), hex("#3A2480"), hex("#2B1B6E"), hex("#33207A") }
@@ -491,9 +492,11 @@ local function buildRim(root: Folder, center: Vector3, top: number, rng: Random)
 		local lamp = ball(root, base + Vector3.new(0, height + 1.2, 0), 2.4, tube(a))
 		lamp.Name = "RimSpire"
 		tag(lamp, "Pulse", { PulseAmount = 0.15 })
-		-- Night: every other spire throws a neon laser into the sky that sweeps in a circle. It stays on during a
+		-- Night: every spire throws a neon laser into the sky that sweeps in a circle (every third one throws a second,
+		-- in the other colour). It stays on during a
 		-- rhythm run, so the background glows behind the lane.
-		if i % 2 == 0 then
+		for k = 1, (if i % 3 == 0 then 2 else 1) do
+			local laserColor = if k == 1 then a else b
 			local tip = newPart({
 				Name = "LaserTip",
 				Transparency = 1,
@@ -503,7 +506,7 @@ local function buildRim(root: Folder, center: Vector3, top: number, rng: Random)
 			tag(tip, "Orbit", {
 				OrbitCenter = lamp.Position + Vector3.new(0, 70, 0),
 				OrbitRadius = rng:NextNumber(14, 30),
-				OrbitSpeed = (if i % 4 == 0 then 1 else -1) * rng:NextNumber(0.35, 0.9),
+				OrbitSpeed = (if (i + k) % 2 == 0 then 1 else -1) * rng:NextNumber(0.35, 0.9),
 				OrbitPhase = rng:NextNumber(0, 6.28),
 			})
 			local a0 = Instance.new("Attachment")
@@ -514,7 +517,7 @@ local function buildRim(root: Folder, center: Vector3, top: number, rng: Random)
 			laser.Name = "Laser"
 			laser.Attachment0 = a0
 			laser.Attachment1 = a1
-			laser.Color = ColorSequence.new(a.neon)
+			laser.Color = ColorSequence.new(laserColor.neon)
 			laser.Width0 = 0.7
 			laser.Width1 = 0.15
 			laser.Segments = 1

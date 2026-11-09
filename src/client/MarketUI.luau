@@ -14,6 +14,7 @@ local ListModal = require(script.Parent.ListModal)
 local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
+local Progression = require(ReplicatedStorage.Shared.Garden.Progression)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Shop = require(ReplicatedStorage.Shared.Garden.Shop)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
@@ -33,6 +34,15 @@ local function fruitLabel(seedId: string, mutation: string?): string
 	return if mutation then `{Mutations.displayName(mutation)} {name}` else name
 end
 
+-- "  \u{2605}\u{2605}\u{2606}\u{2606}\u{2606}" for the seed's mastery; nothing until the first harvest.
+local function stars(snapshot: GardenState.Snapshot, seedId: string): string
+	local count = Progression.starsFor(snapshot.mastery[seedId] or 0)
+	if count == 0 then
+		return ""
+	end
+	return "  " .. string.rep("\u{2605}", count) .. string.rep("\u{2606}", Progression.MaxStars - count)
+end
+
 -- The actions come first (a landscape phone only shows about three rows without scrolling).
 local function shopRows(
 	snapshot: GardenState.Snapshot,
@@ -41,13 +51,16 @@ local function shopRows(
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
 	-- The stock changes every few minutes; it is worked out from the server clock, like on the server.
-	local stock = Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())))
+	local stock = Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())), snapshot.level.level)
 	for _, seedId in stock do
 		local seed = Seeds.get(seedId) :: Seeds.Seed
 		local own = snapshot.seeds[seed.seedId] or 0
 		local genre = (Genres.Names :: any)[seed.favoriteGenre]
 		table.insert(rows, {
-			text = `{seed.name.en}  {seed.price}   ({own})   {seed.rarity}  \u{2665} {genre.en}`,
+			text = `{seed.name.en}  {seed.price}   ({own})   {seed.rarity}  \u{2665} {genre.en}{stars(
+				snapshot,
+				seed.seedId
+			)}`,
 			color = if snapshot.coins >= seed.price then Palette.Hues.Matcha.Night else Palette.Rarity.Common,
 			onTap = function()
 				buy(seed.seedId)
@@ -65,6 +78,22 @@ local function shopRows(
 		table.insert(odds, `{(Spirits.get(o.kind) :: Spirits.Def).name.en} {o.percent}%`)
 	end
 	table.insert(rows, { note = true, text = `Egg hatches into: {table.concat(odds, ", ")}` })
+	-- Garden level: what opens next.
+	local level = snapshot.level
+	local nextSeed: Seeds.Seed? = nil
+	for _, seed in Seeds.List do
+		local opensAt = Progression.unlockLevelOf(seed.seedId)
+		if opensAt > level.level and (nextSeed == nil or opensAt < Progression.unlockLevelOf(nextSeed.seedId)) then
+			nextSeed = seed
+		end
+	end
+	local progressText = if level.need > 0
+		then `Garden Lv {level.level}  ({level.into}/{level.need} XP)`
+		else `Garden Lv {level.level} (max)`
+	local nextText = if nextSeed
+		then `  -  {nextSeed.name.en} opens at Lv {Progression.unlockLevelOf(nextSeed.seedId)}`
+		else "  -  every seed is open"
+	table.insert(rows, { note = true, text = progressText .. nextText })
 	return rows
 end
 
@@ -85,6 +114,7 @@ local function sellRows(snapshot: GardenState.Snapshot, sellAll: () -> ()): { Li
 		group.count += 1
 		group.value += fruit.value
 	end
+	total = math.round(total * snapshot.sellMult)
 	if #snapshot.fruits == 0 then
 		table.insert(rows, { text = "No fruit to sell yet" })
 	else
@@ -147,14 +177,15 @@ function MarketUI.start()
 	local shop = ListModal.create("Shop", onClose)
 	local market = ListModal.create("Market", onClose)
 
-	local function shopTitle(coins: number): string
+	local function shopTitle(snapshot: GardenState.Snapshot): string
 		local left = Shop.secondsLeft(math.floor(Workspace:GetServerTimeNow()))
-		return `Shop  {coins} coins  new stock {left // 60}:{string.format("%02d", left % 60)}`
+		return `Shop Lv {snapshot.level.level}  {snapshot.coins} coins  {left // 60}:{string.format("%02d", left % 60)}`
 	end
 	local shownStock = ""
 	local function rebuildShop(snapshot: GardenState.Snapshot)
-		shop.setTitle(shopTitle(snapshot.coins))
-		shownStock = table.concat(Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow()))), ",")
+		shop.setTitle(shopTitle(snapshot))
+		shownStock =
+			table.concat(Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())), snapshot.level.level), ",")
 		shop.setRows(shopRows(snapshot, buy, buyEgg))
 	end
 	-- While the shop is open the countdown ticks, and the rows are rebuilt when the stock changes.
@@ -163,11 +194,11 @@ function MarketUI.start()
 			task.wait(1)
 			local snapshot = GardenState.get()
 			if snapshot and shop.isOpen() then
-				local now = Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())))
+				local now = Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())), snapshot.level.level)
 				if table.concat(now, ",") ~= shownStock then
 					rebuildShop(snapshot)
 				else
-					shop.setTitle(shopTitle(snapshot.coins))
+					shop.setTitle(shopTitle(snapshot))
 				end
 			end
 		end
@@ -197,12 +228,37 @@ function MarketUI.start()
 	local coins = Instance.new("TextLabel")
 	coins.AnchorPoint = Vector2.new(1, 0)
 	coins.Position = UDim2.new(1, -16, 0, 72)
-	coins.Size = UDim2.fromOffset(120, 36)
+	coins.Size = UDim2.fromOffset(170, 42)
 	coins.TextScaled = true
 	coins.Text = "Coins: 0"
 	coins.Parent = gui
+	-- A thin XP bar along the bottom edge of the counter: how far to the next garden level.
+	local xpTrack = Instance.new("Frame")
+	xpTrack.AnchorPoint = Vector2.new(0.5, 1)
+	xpTrack.Position = UDim2.new(0.5, 0, 1, -2)
+	xpTrack.Size = UDim2.new(1, -20, 0, 4)
+	xpTrack.BackgroundColor3 = Color3.new(0, 0, 0)
+	xpTrack.BackgroundTransparency = 0.7
+	xpTrack.BorderSizePixel = 0
+	xpTrack.ZIndex = 5
+	xpTrack.Parent = coins
+	local xpFill = Instance.new("Frame")
+	xpFill.Size = UDim2.fromScale(0, 1)
+	xpFill.BackgroundColor3 = Color3.fromHex("#3DFFB0")
+	xpFill.BorderSizePixel = 0
+	xpFill.ZIndex = 6
+	xpFill.Parent = xpTrack
+	for _, bar in { xpTrack, xpFill } do
+		local round = Instance.new("UICorner")
+		round.CornerRadius = UDim.new(1, 0)
+		round.Parent = bar
+	end
+	local coinsPad = Instance.new("UIPadding")
+	coinsPad.PaddingTop = UDim.new(0, 1)
+	coinsPad.PaddingBottom = UDim.new(0, 13)
+	coinsPad.Parent = coins
 	local coinsLimit = Instance.new("UITextSizeConstraint")
-	coinsLimit.MaxTextSize = 22
+	coinsLimit.MaxTextSize = 20
 	coinsLimit.Parent = coins
 	UiTheme.watch(function()
 		local theme = UiTheme.get()
@@ -220,7 +276,9 @@ function MarketUI.start()
 
 	-- The tutorial step that asks for a purchase lights up the Shop button (the one accent colour).
 	local function render(snapshot: GardenState.Snapshot)
-		coins.Text = `Coins: {snapshot.coins}`
+		coins.Text = `Lv {snapshot.level.level}   Coins: {snapshot.coins}`
+		local level = snapshot.level
+		xpFill.Size = UDim2.fromScale(if level.need > 0 then level.into / level.need else 1, 1)
 		UiTheme.setAccent(shopButton, snapshot.tutorialStep == Tutorial.Steps.Buy)
 		if shop.isOpen() then
 			rebuildShop(snapshot)

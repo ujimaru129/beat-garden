@@ -33,6 +33,22 @@ local function seedName(seedId: string): string
 	return if seed then seed.name.en else seedId
 end
 
+-- Level-ups and newly opened seeds, after a tend or a harvest.
+local function announceLevelUp(result: any)
+	if not result.leveledUp then
+		return
+	end
+	local names: { string } = {}
+	for _, seedId in result.unlocked or {} do
+		table.insert(names, seedName(seedId))
+	end
+	if #names > 0 then
+		Toast.show(`Garden Lv {result.level}!  New seed in the shop: {table.concat(names, ", ")}`)
+	else
+		Toast.show(`Garden Lv {result.level}!`)
+	end
+end
+
 function TendFlow.start()
 	local remote = ReplicatedStorage:WaitForChild("Tend", 10) :: RemoteFunction?
 	if not remote then
@@ -92,8 +108,12 @@ function TendFlow.start()
 					stage = result.stage,
 					fraction = result.fraction,
 					favorite = result.favorite,
+					xpGained = result.xpGained,
+					level = result.level,
+					leveledUp = result.leveledUp,
 				}, function()
 					setPromptsEnabled(true)
+					announceLevelUp(result)
 				end)
 			else
 				setPromptsEnabled(true)
@@ -274,19 +294,63 @@ function TendFlow.start()
 		local name = if mutation
 			then `{Mutations.displayName(mutation)} {seedName(result.seedId)}`
 			else seedName(result.seedId)
+		local overripe = (result.freshness or 1) < 0.999
 		local discovery = result.discovery
 		if discovery and discovery.isNew then
 			local extra = `  NEW in the book! +{discovery.coins} coins`
 			if (result.completionEggs or 0) > 0 then
 				extra ..= `  Complete! +{result.completionEggs} Spirit Egg`
 			end
-			Toast.show(`Harvested {name}!  worth {result.value}{extra}`)
+			Toast.show(
+				`Harvested {name}!  worth {result.value}{extra}{if overripe then "  (overripe: harvest sooner!)" else ""}`
+			)
 		else
-			Toast.show(`Harvested {name}!  worth {result.value}`)
+			Toast.show(
+				`Harvested {name}!  worth {result.value}{if overripe then "  (overripe: harvest sooner!)" else ""}`
+			)
 		end
+		if result.newStar then
+			Toast.show(
+				`{seedName(result.seedId)} mastery {string.rep("\u{2605}", result.stars)}: grows faster, mutates more!`
+			)
+		end
+		announceLevelUp(result)
 		if plot:IsA("BasePart") then
 			HarvestFx.play(plot.Position, mutation)
 		end
+	end
+
+	-- Studio only: C gives 500 coins.
+	if RunService:IsStudio() then
+		UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed or input.KeyCode ~= Enum.KeyCode.C then
+				return
+			end
+			local result = GardenState.call("devGrant", 500)
+			Toast.show(if result.ok then "+500 coins (Studio)" else result.reason or "not available")
+		end)
+	end
+
+	-- Studio only: G grows every plant to its next stage; L jumps to the next garden level.
+	if RunService:IsStudio() then
+		UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed or input.KeyCode ~= Enum.KeyCode.G then
+				return
+			end
+			local result = GardenState.call("devGrow")
+			Toast.show(if result.ok then "Plants grew one stage (Studio)" else result.reason or "not available")
+		end)
+		UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed or input.KeyCode ~= Enum.KeyCode.L then
+				return
+			end
+			local result = GardenState.call("devLevelUp")
+			if result.ok then
+				announceLevelUp({ leveledUp = true, level = result.level, unlocked = result.unlocked })
+			else
+				Toast.show(result.reason or "not available")
+			end
+		end)
 	end
 
 	-- Studio only: P switches the Plot Pass on and off, to try the premium plots and the locked look.

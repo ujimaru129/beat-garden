@@ -1,9 +1,9 @@
 --!strict
 -- Beat Spirits (pets): hatched from eggs, one can be equipped. An equipped spirit tends the plant on
 -- its own while the player is away from it (low accuracy: small points, on a timer) and may add a
--- passive effect. Two kinds for the MVP. Values are initial, tune from playtest data.
+-- passive effect. Ten kinds. Values are initial, tune from playtest data.
 
-export type Kind = "Mochi" | "Kitsune"
+export type Kind = "Mochi" | "Kitsune" | "Pon" | "Koke" | "Ame" | "Haru" | "Poko" | "Mimi" | "Hoshi" | "Yoru"
 
 export type Def = {
 	kind: Kind,
@@ -12,6 +12,10 @@ export type Def = {
 	autoCareSeconds: number, -- how often it tends the plant
 	autoCarePoints: number, -- growth seconds it adds each time
 	mutationMult: number, -- multiplies the mutation chance at harvest
+	sellMult: number, -- multiplies what the Market pays
+	freshMult: number, -- multiplies how long a ripe fruit stays fresh
+	tendMult: number, -- multiplies the growth of the player's own tends
+	discoveryMult: number, -- multiplies the coins for a first-time book entry
 	estimatedValue: number, -- coins, for the trade screen's "estimated value"
 }
 
@@ -21,20 +25,132 @@ local list: { Def } = {
 	{
 		kind = "Mochi",
 		name = { en = "Mochi", ja = "もち" },
-		weight = 70,
+		weight = 24,
 		autoCareSeconds = 45,
 		autoCarePoints = 8,
 		mutationMult = 1,
+		sellMult = 1,
+		freshMult = 1,
+		tendMult = 1,
+		discoveryMult = 1,
 		estimatedValue = 120,
 	},
 	{
 		kind = "Kitsune",
 		name = { en = "Kitsune", ja = "きつね" },
-		weight = 30,
+		weight = 14,
 		autoCareSeconds = 60,
 		autoCarePoints = 6,
 		mutationMult = 1.3,
+		sellMult = 1,
+		freshMult = 1,
+		tendMult = 1,
+		discoveryMult = 1,
 		estimatedValue = 300,
+	},
+	{
+		kind = "Pon",
+		name = { en = "Pon", ja = "ぽん" },
+		weight = 12,
+		autoCareSeconds = 60,
+		autoCarePoints = 6,
+		mutationMult = 1,
+		sellMult = 1.1,
+		freshMult = 1,
+		tendMult = 1,
+		discoveryMult = 1,
+		estimatedValue = 250,
+	},
+	{
+		kind = "Koke",
+		name = { en = "Koke", ja = "こけ" },
+		weight = 12,
+		autoCareSeconds = 60,
+		autoCarePoints = 6,
+		mutationMult = 1,
+		sellMult = 1,
+		freshMult = 2,
+		tendMult = 1,
+		discoveryMult = 1,
+		estimatedValue = 250,
+	},
+	{
+		kind = "Ame",
+		name = { en = "Ame", ja = "あめ" },
+		weight = 9,
+		autoCareSeconds = 45,
+		autoCarePoints = 14,
+		mutationMult = 1,
+		sellMult = 1,
+		freshMult = 1,
+		tendMult = 1,
+		discoveryMult = 1,
+		estimatedValue = 400,
+	},
+	{
+		kind = "Haru",
+		name = { en = "Haru", ja = "はる" },
+		weight = 10,
+		autoCareSeconds = 60,
+		autoCarePoints = 6,
+		mutationMult = 1,
+		sellMult = 1,
+		freshMult = 1,
+		tendMult = 1.2,
+		discoveryMult = 1,
+		estimatedValue = 350,
+	},
+	{
+		kind = "Poko",
+		name = { en = "Poko", ja = "ぽこ" },
+		weight = 8,
+		autoCareSeconds = 60,
+		autoCarePoints = 6,
+		mutationMult = 1,
+		sellMult = 1,
+		freshMult = 1,
+		tendMult = 1,
+		discoveryMult = 2,
+		estimatedValue = 450,
+	},
+	{
+		kind = "Mimi",
+		name = { en = "Mimi", ja = "みみ" },
+		weight = 6,
+		autoCareSeconds = 30,
+		autoCarePoints = 5,
+		mutationMult = 1,
+		sellMult = 1,
+		freshMult = 1,
+		tendMult = 1,
+		discoveryMult = 1,
+		estimatedValue = 500,
+	},
+	{
+		kind = "Hoshi",
+		name = { en = "Hoshi", ja = "ほし" },
+		weight = 3,
+		autoCareSeconds = 45,
+		autoCarePoints = 8,
+		mutationMult = 1.15,
+		sellMult = 1.05,
+		freshMult = 1.5,
+		tendMult = 1,
+		discoveryMult = 1,
+		estimatedValue = 900,
+	},
+	{
+		kind = "Yoru",
+		name = { en = "Yoru", ja = "よる" },
+		weight = 2,
+		autoCareSeconds = 60,
+		autoCarePoints = 6,
+		mutationMult = 1.5,
+		sellMult = 1,
+		freshMult = 1,
+		tendMult = 1,
+		discoveryMult = 1,
+		estimatedValue = 1200,
 	},
 }
 Spirits.List = table.freeze(list)

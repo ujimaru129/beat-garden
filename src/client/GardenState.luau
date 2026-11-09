@@ -6,6 +6,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Progression = require(ReplicatedStorage.Shared.Garden.Progression)
+
 local GardenState = {}
 
 export type FruitInfo = { seedId: string, mutation: string?, weight: number, value: number }
@@ -24,6 +26,10 @@ export type Snapshot = {
 	spirits: { { id: string, kind: string } },
 	equippedSpirit: string?,
 	collection: { [string]: boolean },
+	sellMult: number, -- the equipped spirit's bonus on selling
+	xp: number,
+	level: Progression.LevelInfo,
+	mastery: { [string]: number }, -- seedId -> harvests
 }
 
 local current: Snapshot? = nil

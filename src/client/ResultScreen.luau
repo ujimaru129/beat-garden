@@ -19,6 +19,9 @@ export type Data = {
 	favorite: boolean?, -- the song was the plant's favourite genre
 	stage: string,
 	fraction: number,
+	xpGained: number?,
+	level: number?,
+	leveledUp: boolean?,
 }
 
 -- Night: neon tube colours. Day: candy colours (deeper than the pastel panels so the letter stands out).
@@ -196,7 +199,8 @@ function ResultScreen.show(data: Data, onClose: () -> ())
 	label(panel, {
 		Position = UDim2.new(x, 0, 0, 202),
 		Size = UDim2.new(0.54, 0, 0, 28),
-		Text = `+{data.points} growth  -  {data.stage} {math.floor(data.fraction * 100)}%`,
+		Text = `+{data.points} growth  -  {data.stage} {math.floor(data.fraction * 100)}%`
+			.. (if data.xpGained then `  -  +{data.xpGained} XP` else ""),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
 

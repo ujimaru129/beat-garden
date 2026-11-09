@@ -3,6 +3,7 @@
 -- server and every client agree on it without storing anything. The starter seed is always in stock (the
 -- tutorial needs it); the other slots are drawn by rarity.
 
+local Progression = require(script.Parent.Progression)
 local Seeds = require(script.Parent.Seeds)
 
 local Shop = {}
@@ -36,14 +37,15 @@ local function generator(seed: number): () -> number
 	end
 end
 
--- Seed ids in stock during `slot`, the starter seed first.
-function Shop.stock(slot: number): { string }
+-- Seed ids in stock during `slot`, the starter seed first. Only seeds the garden level has opened are drawn
+-- (`level` nil = every seed).
+function Shop.stock(slot: number, level: number?): { string }
 	local random = generator(slot)
 	random() -- the first value of a fresh generator is weak; skip it
 	local result: { string } = { Seeds.StarterSeedId }
 	local pool: { Seeds.Seed } = {}
 	for _, seed in Seeds.List do
-		if seed.seedId ~= Seeds.StarterSeedId then
+		if seed.seedId ~= Seeds.StarterSeedId and (level == nil or Progression.unlockLevelOf(seed.seedId) <= level) then
 			table.insert(pool, seed)
 		end
 	end
@@ -67,8 +69,8 @@ function Shop.stock(slot: number): { string }
 	return result
 end
 
-function Shop.inStock(seedId: string, now: number): boolean
-	return table.find(Shop.stock(Shop.slotOf(now)), seedId) ~= nil
+function Shop.inStock(seedId: string, now: number, level: number?): boolean
+	return table.find(Shop.stock(Shop.slotOf(now), level), seedId) ~= nil
 end
 
 return table.freeze(Shop)

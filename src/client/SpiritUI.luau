@@ -21,6 +21,18 @@ local function effectText(def: Spirits.Def): string
 	if def.mutationMult > 1 then
 		text ..= `, mutations x{def.mutationMult}`
 	end
+	if def.tendMult > 1 then
+		text ..= `, your tends grow x{def.tendMult}`
+	end
+	if def.discoveryMult > 1 then
+		text ..= `, new book entries pay x{def.discoveryMult}`
+	end
+	if def.sellMult > 1 then
+		text ..= `, sells for x{def.sellMult}`
+	end
+	if def.freshMult > 1 then
+		text ..= `, fruit stays fresh x{def.freshMult} longer`
+	end
 	return text
 end
 
@@ -71,7 +83,19 @@ function SpiritUI.start()
 		local result = GardenState.call("equip", id)
 		if not result.ok then
 			Toast.show(result.reason or "could not equip")
+			return
 		end
+		local snapshot = GardenState.get()
+		local name = "spirit"
+		if snapshot and id then
+			for _, spirit in snapshot.spirits do
+				local def = if spirit.id == id then Spirits.get(spirit.kind) else nil
+				if def then
+					name = def.name.en
+				end
+			end
+		end
+		Toast.show(if id then `{name} is now with you!` else "Spirit put away")
 	end
 
 	local modal = ListModal.create("Spirits", function()

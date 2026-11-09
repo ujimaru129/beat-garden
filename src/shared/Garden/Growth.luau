@@ -17,6 +17,9 @@ export type Plot = {
 	lastTendAt: number, -- unix seconds, 0 = never tended
 	bestPerfectStreak: number, -- longest Perfect streak over all tends (feeds the mutation roll)
 	mutationMult: number, -- best Difficulty.MutationChanceMultiplier used while tending
+	mutation: string?, -- the mutation rolled when the fruit ripened (Garden/Mutations); nil = a plain fruit
+	rolled: boolean?, -- the roll has been made
+	growMult: number?, -- share of growSeconds this plant needs (seed mastery, fixed when planted); nil = 1
 }
 
 local Growth = {}
@@ -31,6 +34,12 @@ local stages: { { name: Stage, from: number } } = {
 }
 Growth.Stages = table.freeze(stages)
 
+-- A ripe fruit stays fresh for FreshSeconds; after that it shrivels: its weight (and so its value) falls in a
+-- straight line to MinFreshness over RotSeconds, then stays there (spec: harvest again soon).
+Growth.FreshSeconds = 600
+Growth.RotSeconds = 1200
+Growth.MinFreshness = 0.5
+
 -- Growth seconds a perfect Easy tend is worth. Other difficulties scale it (Difficulty.GrowthMultiplier),
 -- and an S / A rank adds a bonus (Rank.GrowthBonus). A run lasts about 90 s, so this is worth more than
 -- the time it takes; the cooldown below keeps tending from being the only way to grow.
@@ -39,8 +48,16 @@ Growth.MaxTendPoints = 150
 -- The same plant cannot be tended again for this long.
 Growth.TendCooldownSeconds = 30
 
-function Growth.newPlot(seedId: string, now: number): Plot
-	return { seedId = seedId, plantedAt = now, careGauge = 0, lastTendAt = 0, bestPerfectStreak = 0, mutationMult = 1 }
+function Growth.newPlot(seedId: string, now: number, growMult: number?): Plot
+	return {
+		seedId = seedId,
+		plantedAt = now,
+		careGauge = 0,
+		lastTendAt = 0,
+		bestPerfectStreak = 0,
+		mutationMult = 1,
+		growMult = growMult,
+	}
 end
 
 -- Applies one validated tend to the plot.
@@ -55,6 +72,21 @@ end
 function Growth.progressSeconds(plot: Plot, growSeconds: number, now: number): number
 	local elapsed = math.max(0, now - plot.plantedAt)
 	return math.min(growSeconds, elapsed + plot.careGauge)
+end
+
+-- Unix time the plant became ripe. Progress is time + care, so it is ripe once `elapsed >= growSeconds - care`.
+function Growth.readyAt(plot: Plot, growSeconds: number): number
+	return plot.plantedAt + math.max(0, growSeconds - plot.careGauge)
+end
+
+-- 1 while fresh, down to MinFreshness when overripe. `growSeconds` is the seed's (mastery-adjusted) grow time.
+-- `holdMult` stretches the fresh time (a spirit's passive).
+function Growth.freshness(plot: Plot, growSeconds: number, now: number, holdMult: number?): number
+	local late = now - (Growth.readyAt(plot, growSeconds) + Growth.FreshSeconds * (holdMult or 1))
+	if late <= 0 then
+		return 1
+	end
+	return 1 - (1 - Growth.MinFreshness) * math.min(1, late / Growth.RotSeconds)
 end
 
 -- 0..1

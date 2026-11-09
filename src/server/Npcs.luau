@@ -79,30 +79,54 @@ local function build(
 		Color = Palette.Base.Sumi,
 	}, model)
 
-	-- The name floats above the figure so it can be found from a distance.
-	local sign = Instance.new("BillboardGui")
-	sign.Name = "Sign"
-	sign.Adornee = body
-	sign.Size = UDim2.fromOffset(200, 44)
-	sign.StudsOffsetWorldSpace = Vector3.new(0, 6.2, 0)
-	sign.AlwaysOnTop = true
-	sign.MaxDistance = 80
-	sign.Parent = body
+	-- A coloured pad under the stall, and a real signboard behind it facing the hub (no floating text, so two
+	-- stalls side by side never cover each other).
+	part({
+		Name = "Pad",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.3, 11, 11),
+		CFrame = CFrame.new(base.X, y + 0.15, base.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = bodyColor,
+		CanQuery = false,
+	}, model)
+	local boardCenter = Vector3.new(base.X - 3.6, y + 7.2, base.Z)
+	for _, dz in { -3, 3 } do
+		part({
+			Name = "Post",
+			Size = Vector3.new(0.5, 5.4, 0.5),
+			Position = Vector3.new(base.X - 3.6, y + 2.7, base.Z + dz),
+			Color = Palette.Base.Washi,
+		}, model)
+	end
+	local board = part({
+		Name = "Board",
+		Size = Vector3.new(8, 3.4, 0.5),
+		CFrame = CFrame.lookAt(boardCenter, boardCenter + Vector3.new(1, 0, 0)), -- the front faces the hub
+		Color = bodyColor,
+	}, model)
+	local surface = Instance.new("SurfaceGui")
+	surface.Face = Enum.NormalId.Front
+	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	surface.PixelsPerStud = 50
+	surface.Parent = board
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundColor3 = Palette.Base.YoruSky
-	label.BackgroundTransparency = 0.25
-	label.TextColor3 = Palette.Base.Washi
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Palette.Base.YoruSky
 	label.TextScaled = true
-	label.Font = Enum.Font.GothamBold
+	label.Font = Enum.Font.GothamBlack
 	label.Text = title
-	label.Parent = sign
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = label
+	label.Parent = surface
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.new(1, 1, 1)
+	stroke.Thickness = 3
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.Parent = label
 	local padding = Instance.new("UIPadding")
-	padding.PaddingTop = UDim.new(0.15, 0)
-	padding.PaddingBottom = UDim.new(0.15, 0)
+	padding.PaddingTop = UDim.new(0.12, 0)
+	padding.PaddingBottom = UDim.new(0.12, 0)
+	padding.PaddingLeft = UDim.new(0.06, 0)
+	padding.PaddingRight = UDim.new(0.06, 0)
 	padding.Parent = label
 
 	local prompt = Instance.new("ProximityPrompt")

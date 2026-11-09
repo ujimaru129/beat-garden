@@ -5,6 +5,7 @@
 
 local Collection = require(script.Parent.Parent.Garden.Collection)
 local Growth = require(script.Parent.Parent.Garden.Growth)
+local Mutations = require(script.Parent.Parent.Garden.Mutations)
 local Plots = require(script.Parent.Parent.Garden.Plots)
 local Seeds = require(script.Parent.Parent.Garden.Seeds)
 local Spirits = require(script.Parent.Parent.Garden.Spirits)
@@ -34,6 +35,8 @@ export type Data = {
 	settings: { latencyMs: number },
 	stats: { tends: number, perfects: number, harvests: number },
 	collection: Collection.Book, -- discovered seed x variant entries (Garden/Collection)
+	xp: number, -- garden XP (Garden/Progression)
+	mastery: { [string]: number }, -- seedId -> harvests of that seed
 	tutorialStep: number, -- 1..5 = in the tutorial, Tutorial.Done = finished or skipped
 }
 
@@ -64,6 +67,8 @@ function PlayerData.new(): Data
 		settings = { latencyMs = 0 },
 		stats = { tends = 0, perfects = 0, harvests = 0 },
 		collection = {},
+		xp = 0,
+		mastery = {},
 		tutorialStep = 1,
 	}
 end
@@ -79,6 +84,13 @@ local function sanitizePlot(raw: any): Growth.Plot?
 		lastTendAt = num(raw.lastTendAt, 0, 0),
 		bestPerfectStreak = num(raw.bestPerfectStreak, 0, 0),
 		mutationMult = num(raw.mutationMult, 1, 1),
+		rolled = raw.rolled == true,
+		mutation = if raw.rolled == true
+				and type(raw.mutation) == "string"
+				and Mutations.isMutation(raw.mutation)
+			then raw.mutation
+			else nil,
+		growMult = if raw.growMult ~= nil then num(raw.growMult, 1, 0.5, 1) else nil,
 	}
 end
 
@@ -172,6 +184,18 @@ function PlayerData.sanitize(raw: any): Data
 		for key, value in raw.collection do
 			if type(key) == "string" and value == true and Collection.isValidKey(key) then
 				data.collection[key] = true
+			end
+		end
+	end
+
+	data.xp = math.floor(num(raw.xp, 0, 0, 1e9))
+	if type(raw.mastery) == "table" then
+		for seedId, harvests in raw.mastery do
+			if type(seedId) == "string" and Seeds.get(seedId) then
+				local n = math.floor(num(harvests, 0, 0, 1e6))
+				if n > 0 then
+					data.mastery[seedId] = n
+				end
 			end
 		end
 	end

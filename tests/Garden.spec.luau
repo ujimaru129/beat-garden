@@ -226,5 +226,26 @@ return function(loader, expect)
 				end
 			end,
 		},
+		{
+			"a rolled mutation survives the data sanitiser, an unknown one does not",
+			function()
+				local plots = {
+					["1"] = { seedId = "seed_sakura", plantedAt = 5, careGauge = 1, rolled = true, mutation = "Vapor" },
+					["2"] = {
+						seedId = "seed_sakura",
+						plantedAt = 5,
+						careGauge = 1,
+						rolled = true,
+						mutation = "Nonsense",
+					},
+					["3"] = { seedId = "seed_sakura", plantedAt = 5, careGauge = 1, mutation = "Vapor" }, -- not rolled
+				}
+				local clean = PlayerData.sanitize({ plots = plots })
+				expect(clean.plots["1"].mutation).toBe("Vapor")
+				expect(clean.plots["1"].rolled).toBe(true)
+				expect(clean.plots["2"].mutation).toBe(nil)
+				expect(clean.plots["3"].mutation).toBe(nil)
+			end,
+		},
 	}
 end

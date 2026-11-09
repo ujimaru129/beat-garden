@@ -1,32 +1,26 @@
 --!strict
 -- Client-only touches on the garden plots, drawn locally so they cost the server nothing:
 --   * a glow on every plant that pulses to the beat at night (spec: plants and fruit glow with the beat)
---   * the equipped spirit as a small floating orb next to its owner's plant
+--   * the equipped spirit as a little character next to its owner's plant
 -- Both follow attributes the server already sets on each plot (SpiritKind, Stage).
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Atmosphere = require(script.Parent.Atmosphere)
-local Palette = require(ReplicatedStorage.Shared.Palette)
 local PlotMarks = require(script.Parent.PlotMarks)
+local SpiritModel = require(script.Parent.SpiritModel)
 
 local PlotVisuals = {}
 
 local BPM = 120 -- the garden's own pulse (no song is playing in the world)
 
-local SPIRIT_COLORS: { [string]: Color3 } = {
-	Mochi = Palette.Base.Washi,
-	Kitsune = Palette.Hues.Yuzu.Night,
-}
-
 type Entry = {
 	soil: Part,
 	light: PointLight,
-	orb: Part?,
+	orb: Model?,
 	orbKind: string?,
 	glows: { BasePart },
 	marks: PlotMarks.Marks,
@@ -122,8 +116,6 @@ function PlotVisuals.start()
 		end
 	end)
 
-	local lite = Atmosphere.isLite()
-
 	RunService.RenderStepped:Connect(function()
 		local now = Workspace:GetServerTimeNow()
 		-- 0..1 saw that is highest right on the beat.
@@ -146,13 +138,17 @@ function PlotVisuals.start()
 				-- Fruit glows a little even by day.
 				if glows then
 					entry.light.Brightness = 0.8 + 2.2 * beat * beat
+				elseif stage == "Fruit" and soil:GetAttribute("Mutation") ~= nil then
+					-- a mutated fruit shines on the beat, day and night
+					entry.light.Brightness = 1.6 + 2.4 * beat * beat
+					entry.light.Range = 18
 				elseif stage == "Fruit" then
 					entry.light.Brightness = 0.6
 				else
 					entry.light.Brightness = 0
 				end
 
-				-- Spirit orb
+				-- The equipped spirit: a little character that hops on the beat next to the plant
 				local kind: any = soil:GetAttribute("SpiritKind")
 				if kind ~= entry.orbKind then
 					entry.orbKind = kind :: string?
@@ -161,33 +157,20 @@ function PlotVisuals.start()
 						entry.orb = nil
 					end
 					if kind then
-						local orb = Instance.new("Part")
-						orb.Name = "SpiritOrb"
-						orb.Shape = Enum.PartType.Ball
-						orb.Size = Vector3.new(1.4, 1.4, 1.4)
-						orb.Anchored = true
-						orb.CanCollide = false
-						orb.CanQuery = false
-						orb.CanTouch = false
-						orb.CastShadow = false
-						orb.Material = Enum.Material.Neon
-						orb.Color = SPIRIT_COLORS[kind] or Palette.Base.Washi
-						if not lite then
-							local glow = Instance.new("PointLight")
-							glow.Range = 8
-							glow.Brightness = 1.2
-							glow.Color = orb.Color
-							glow.Parent = orb
-						end
-						orb.Parent = localFolder
-						entry.orb = orb
+						local spirit = SpiritModel.create(kind :: string)
+						spirit.Parent = localFolder
+						entry.orb = spirit
 					end
 				end
-				local orb = entry.orb
-				if orb then
+				local spirit = entry.orb
+				if spirit then
 					local t = os.clock()
-					orb.Position = soil.Position
-						+ Vector3.new(3.6 + math.cos(t) * 0.4, 4.2 + math.sin(t * 2) * 0.5, math.sin(t) * 0.4)
+					local hop = math.abs(math.sin(math.pi * ((t * BPM / 60) % 1))) * 0.9
+					local ground = soil.Position
+						+ Vector3.new(4.5 + math.cos(t * 0.5) * 0.4, soil.Size.Y / 2, math.sin(t * 0.5) * 0.4)
+					local spot = ground + Vector3.new(0, hop, 0)
+					local lookAt = Vector3.new(soil.Position.X, spot.Y, soil.Position.Z)
+					spirit:PivotTo(CFrame.lookAt(spot, lookAt))
 				end
 			end
 		end

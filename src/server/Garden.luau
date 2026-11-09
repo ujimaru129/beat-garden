@@ -27,8 +27,11 @@ local PlayerStore = require(script.Parent.PlayerStore)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Plots = require(ReplicatedStorage.Shared.Garden.Plots)
+local Progression = require(ReplicatedStorage.Shared.Garden.Progression)
+local Rush = require(ReplicatedStorage.Shared.Garden.Rush)
 local Shop = require(ReplicatedStorage.Shared.Garden.Shop)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
+local PlantLook = require(script.Parent.PlantLook)
 local Trading = require(script.Parent.Trading)
 local Songs = require(ReplicatedStorage.Shared.Songs)
 local Rank = require(ReplicatedStorage.Shared.Rank)
@@ -45,14 +48,10 @@ local AUTOSAVE_SECONDS = 60
 -- Short cooldown in Studio so it can be tried repeatedly.
 local COOLDOWN_SECONDS = if RunService:IsStudio() then 10 else Growth.TendCooldownSeconds
 
-local PLANT_SCALE = 1.35 -- the plants grow with the bigger plots
-local STAGE_LOOK: { [string]: { size: number, color: Color3 } } = {
-	Seed = { size = 0.8, color = Palette.Base.Sumi },
-	Sprout = { size = 1.8, color = Palette.Hues.Matcha.Day },
-	Sapling = { size = 3.2, color = Palette.Hues.Matcha.Night },
-	Bloom = { size = 4.4, color = Palette.Hues.Sakura.Day },
-	Fruit = { size = 5, color = Palette.Hues.Yuzu.Night },
-}
+-- Plants are big, and they get bigger with the seed's mastery: 5 stars is 1.5x. A fully mastered fruit is about as
+-- wide as the plot spacing (13 studs), so neighbours just touch.
+local PLANT_SCALE = 1.65
+local PLANT_SCALE_PER_STAR = 0.1
 
 type Pending = {
 	segment: RhythmEngine.Segment,
@@ -118,7 +117,7 @@ local function seedOf(plot: Growth.Plot): Seeds.Seed
 end
 
 local function fractionOf(plot: Growth.Plot, now: number): number
-	return Growth.fraction(plot, seedOf(plot).growSeconds, now)
+	return Growth.fraction(plot, seedOf(plot).growSeconds * (plot.growMult or 1), now)
 end
 
 local function equippedSpiritDef(s: Session): Spirits.Def?
@@ -132,6 +131,32 @@ local function equippedSpiritDef(s: Session): Spirits.Def?
 		end
 	end
 	return nil
+end
+
+local function freshnessOf(s: Session, plot: Growth.Plot, now: number): number
+	local def = equippedSpiritDef(s)
+	return Growth.freshness(
+		plot,
+		seedOf(plot).growSeconds * (plot.growMult or 1),
+		now,
+		if def then def.freshMult else nil
+	)
+end
+
+-- The mutation is rolled when the fruit ripens (spec), so it can be seen on the plant before it is harvested.
+-- The chance uses the care of the whole growth, the equipped spirit, the seed's mastery and a running BPM Rush.
+local function ensureRolled(s: Session, plot: Growth.Plot)
+	if plot.rolled then
+		return
+	end
+	local spiritDef = equippedSpiritDef(s)
+	local stars = Progression.starsFor(data(s).mastery[plot.seedId] or 0)
+	local chanceMult = plot.mutationMult
+		* (if spiritDef then spiritDef.mutationMult else 1)
+		* Progression.mutationMult(stars)
+		* Rush.boost(seedOf(plot).favoriteGenre, os.time())
+	plot.mutation = Mutations.roll(plot.bestPerfectStreak, chanceMult, math.random)
+	plot.rolled = true
 end
 
 local function advanceTutorial(s: Session, event: Tutorial.Event)
@@ -171,6 +196,13 @@ local function snapshot(s: Session): any
 		spirits = table.clone(d.spirits),
 		equippedSpirit = d.equippedSpirit,
 		collection = table.clone(d.collection),
+		sellMult = (function()
+			local def = equippedSpiritDef(s)
+			return if def then def.sellMult else 1
+		end)(),
+		xp = d.xp,
+		level = Progression.levelFor(d.xp),
+		mastery = table.clone(d.mastery),
 	}
 end
 
@@ -196,6 +228,18 @@ local function push(s: Session)
 	updateEvent:FireClient(s.player, snapshot(s))
 end
 
+-- The extra parts of a plant (stem, leaves, petals ...) live in a folder under the soil.
+local function lookFolder(soil: Part): Folder
+	local folder = soil:FindFirstChild("PlantParts")
+	if folder and folder:IsA("Folder") then
+		return folder
+	end
+	local made = Instance.new("Folder")
+	made.Name = "PlantParts"
+	made.Parent = soil
+	return made
+end
+
 -- Redraws one plot's plant and prompt from the data.
 local function refreshPlot(s: Session, key: string, spiritKind: string?)
 	local node = s.nodes[key]
@@ -210,6 +254,7 @@ local function refreshPlot(s: Session, key: string, spiritKind: string?)
 		-- not bought yet: a dim, see-through pad with an Unlock prompt
 		soil.Transparency = 0.6
 		plantPart.Transparency = 1
+		PlantLook.clear(lookFolder(soil))
 		soil:SetAttribute("Stage", "Locked")
 		soil:SetAttribute("Fraction", 0)
 		local nextIndex = data(s).plotCount + 1
@@ -239,6 +284,7 @@ local function refreshPlot(s: Session, key: string, spiritKind: string?)
 	local plot = plotOf(s, key)
 	if not plot then
 		plantPart.Transparency = 1
+		PlantLook.clear(lookFolder(soil))
 		soil:SetAttribute("Stage", "Empty")
 		soil:SetAttribute("Fraction", 0)
 		prompt.ActionText = "Plant"
@@ -246,23 +292,47 @@ local function refreshPlot(s: Session, key: string, spiritKind: string?)
 	end
 	local fraction = fractionOf(plot, os.time())
 	local stage = Growth.stageFor(fraction)
-	local look = STAGE_LOOK[stage]
-	plantPart.Transparency = 0
-	local size = look.size * PLANT_SCALE
-	plantPart.Size = Vector3.new(size, size, size)
-	plantPart.Color = look.color
-	plantPart.Position = soil.Position + Vector3.new(0, soil.Size.Y / 2 + size / 2, 0)
+	if stage == "Fruit" then
+		ensureRolled(s, plot)
+	end
+	local shownMutation = if stage == "Fruit" then plot.mutation else nil
+	PlantLook.apply(
+		plantPart,
+		lookFolder(soil),
+		soil.Position + Vector3.new(0, soil.Size.Y / 2, 0),
+		plot.seedId,
+		stage,
+		freshnessOf(s, plot, os.time()),
+		shownMutation,
+		Progression.starsFor(data(s).mastery[plot.seedId] or 0),
+		PLANT_SCALE * (1 + PLANT_SCALE_PER_STAR * Progression.starsFor(data(s).mastery[plot.seedId] or 0))
+	)
 	soil:SetAttribute("Stage", stage)
 	soil:SetAttribute("Fraction", fraction)
-	prompt.ActionText = if stage == "Fruit" then "Harvest" else "Tend"
+	soil:SetAttribute("Mutation", shownMutation)
+	local harvestText = if freshnessOf(s, plot, os.time()) < 1 then "Harvest (overripe)" else "Harvest"
+	if shownMutation then
+		harvestText ..= ` - {Mutations.displayName(shownMutation)}!`
+	end
+	prompt.ActionText = if stage == "Fruit" then harvestText else "Tend"
 end
 
 -- Redraws every plot of the player.
 local function refresh(s: Session)
 	local spiritDef = equippedSpiritDef(s)
 	local kind = if spiritDef then spiritDef.kind else nil
+	-- One spirit per player: it stands at the first planted plot (or the first plot when nothing grows).
+	local home = "1"
+	local bestIndex = math.huge
+	for key in data(s).plots do
+		local index = Plots.indexOf(key)
+		if index and index < bestIndex then
+			bestIndex = index
+			home = key
+		end
+	end
 	for key in s.nodes do
-		refreshPlot(s, key, kind)
+		refreshPlot(s, key, if key == home then kind else nil)
 	end
 end
 
@@ -583,6 +653,10 @@ local function tendSubmit(s: Session, payload: unknown): any
 
 	local tally = result.tally
 	local points = Growth.tendPoints(tally.accuracy, pending.difficulty)
+	local tendSpirit = equippedSpiritDef(s)
+	if tendSpirit then
+		points = math.round(points * tendSpirit.tendMult)
+	end
 	local mutationMult = Difficulty.MutationChanceMultiplier[pending.difficulty]
 	if pending.favorite then
 		-- the plant's favourite genre: grows faster and mutates more easily
@@ -599,6 +673,9 @@ local function tendSubmit(s: Session, payload: unknown): any
 	advanceTutorial(s, "tend")
 	d.stats.tends += 1
 	d.stats.perfects += tally.counts.Perfect
+	local tendProgress = { xp = d.xp, mastery = d.mastery }
+	local tendLevelUp, tendUnlocked, tendLevel = Progression.applyTend(tendProgress, tally.accuracy)
+	d.xp = tendProgress.xp
 	refresh(s)
 	push(s)
 
@@ -618,6 +695,10 @@ local function tendSubmit(s: Session, payload: unknown): any
 		counts = tally.counts,
 		maxCombo = tally.maxCombo,
 		accuracy = tally.accuracy,
+		xpGained = Progression.tendXp(tally.accuracy),
+		level = tendLevel,
+		leveledUp = tendLevelUp,
+		unlocked = tendUnlocked,
 	}
 end
 
@@ -654,7 +735,8 @@ local function plant(s: Session, payload: unknown): any
 	else
 		d.seeds[seedId] = nil
 	end
-	d.plots[plotKey] = Growth.newPlot(seedId, os.time())
+	d.plots[plotKey] =
+		Growth.newPlot(seedId, os.time(), Progression.growTimeMult(Progression.starsFor(d.mastery[seedId] or 0)))
 	advanceTutorial(s, "plant")
 	refresh(s)
 	push(s)
@@ -681,20 +763,27 @@ local function harvest(s: Session, payload: unknown): any
 		return fail("your bag is full - sell some fruit")
 	end
 
-	local spiritDef = equippedSpiritDef(s)
-	local chanceMult = plot.mutationMult * (if spiritDef then spiritDef.mutationMult else 1)
-	local mutation = Mutations.roll(plot.bestPerfectStreak, chanceMult, math.random)
-	local weight = Economy.rollWeight(math.random)
+	ensureRolled(s, plot)
+	local mutation = plot.mutation
+	local freshness = freshnessOf(s, plot, os.time())
+	local weight = math.max(0.1, math.round(Economy.rollWeight(math.random) * freshness * 100) / 100)
 	table.insert(d.fruits, { seedId = plot.seedId, mutation = mutation, weight = weight })
 	d.stats.harvests += 1
 	-- The collection book: a first-time variant pays coins; a complete seed pays an egg.
 	local discovery = Collection.discover(d.collection, plot.seedId, mutation)
 	if discovery.isNew then
+		local discoverySpirit = equippedSpiritDef(s)
+		if discoverySpirit then
+			discovery.coins = math.round(discovery.coins * discoverySpirit.discoveryMult)
+		end
 		d.coins += discovery.coins
 		if discovery.completedSeed then
 			d.eggs += Collection.CompletionEggs
 		end
 	end
+	local progress =
+		Progression.applyHarvest({ xp = d.xp, mastery = d.mastery }, plot.seedId, mutation, discovery.isNew)
+	d.xp += progress.xpGained
 	d.plots[plotKey] = nil
 	advanceTutorial(s, "harvest")
 	refresh(s)
@@ -710,6 +799,14 @@ local function harvest(s: Session, payload: unknown): any
 		value = value,
 		discovery = discovery,
 		completionEggs = if discovery.isNew and discovery.completedSeed then Collection.CompletionEggs else 0,
+		xpGained = progress.xpGained,
+		level = progress.level,
+		leveledUp = progress.leveledUp,
+		unlocked = progress.unlocked,
+		stars = progress.stars,
+		newStar = progress.newStar,
+		harvests = progress.harvests,
+		freshness = freshness,
 	}
 end
 
@@ -737,7 +834,7 @@ local function buy(s: Session, payload: unknown): any
 	if not seed then
 		return fail("unknown seed")
 	end
-	if not Shop.inStock(seed.seedId, os.time()) then
+	if not Shop.inStock(seed.seedId, os.time(), Progression.levelFor(data(s).xp).level) then
 		return fail("not in stock right now")
 	end
 	local d = data(s)
@@ -763,6 +860,8 @@ local function sellAll(s: Session): any
 	for _, fruit in d.fruits do
 		total += Economy.fruitValue(fruit.seedId, fruit.mutation, fruit.weight)
 	end
+	local spirit = equippedSpiritDef(s)
+	total = math.round(total * (if spirit then spirit.sellMult else 1))
 	local count = #d.fruits
 	d.fruits = {}
 	d.coins += total
@@ -880,6 +979,46 @@ local function devPlotPass(s: Session): any
 	refresh(s)
 	push(s)
 	return { ok = true, hasPass = s.hasPass }
+end
+
+-- Studio only: moves every growing plant on to its next stage, so the looks can be checked without waiting.
+local function devGrow(s: Session): any
+	if not RunService:IsStudio() then
+		return fail("not available")
+	end
+	local d = data(s)
+	local now = os.time()
+	local grown = 0
+	for _, plot in d.plots do
+		local total = seedOf(plot).growSeconds * (plot.growMult or 1)
+		local fraction = fractionOf(plot, now)
+		for _, stage in Growth.Stages do
+			if stage.from > fraction + 1e-6 then
+				plot.careGauge += stage.from * total - Growth.progressSeconds(plot, total, now) + 1
+				grown += 1
+				break
+			end
+		end
+	end
+	refresh(s)
+	push(s)
+	return { ok = grown > 0, reason = if grown == 0 then "nothing to grow" else nil, grown = grown }
+end
+
+-- Studio only: jumps to the next garden level so the unlocked seeds can be tried.
+local function devLevelUp(s: Session): any
+	if not RunService:IsStudio() then
+		return fail("not available")
+	end
+	local d = data(s)
+	local level = Progression.levelFor(d.xp).level
+	if level >= Progression.MaxLevel then
+		return fail("already at the max level")
+	end
+	d.xp = Progression.xpToReach(level + 1)
+	print(`[Garden] {s.player.Name}: garden level {level + 1} (Studio)`)
+	push(s)
+	return { ok = true, level = level + 1, unlocked = Progression.seedsUnlockedAt(level + 1) }
 end
 
 -- Studio only: gives coins so the shop, eggs and trading can be tried without waiting.
@@ -1030,6 +1169,10 @@ function Garden.start()
 			return skipTutorial(s)
 		elseif action == "devReset" then
 			return devReset(s)
+		elseif action == "devGrow" then
+			return devGrow(s)
+		elseif action == "devLevelUp" then
+			return devLevelUp(s)
 		elseif action == "devPlotPass" then
 			return devPlotPass(s)
 		elseif action == "devGrant" then

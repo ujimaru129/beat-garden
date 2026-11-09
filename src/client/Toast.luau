@@ -11,6 +11,11 @@ local Toast = {}
 local MIN_SECONDS = 2
 local MAX_SECONDS = 3.5
 
+-- Full-screen panels that sit over the usual toast spot: the toast moves above them while one is open.
+local PANELS = { "ListModal", "SongSelect", "DifficultyPicker" }
+local TOP_Y = 0.12
+local NORMAL_Y = 0.28
+
 local label: TextLabel? = nil
 local token = 0
 
@@ -27,7 +32,7 @@ local function ensure(): TextLabel
 	local l = Instance.new("TextLabel")
 	l.AnchorPoint = Vector2.new(0.5, 0.5)
 	-- Below the tutorial banner (top centre) and clear of the Roblox menu buttons at the top left.
-	l.Position = UDim2.fromScale(0.5, 0.28)
+	l.Position = UDim2.fromScale(0.5, NORMAL_Y)
 	l.Size = UDim2.fromScale(0.5, 0.16)
 	l.TextScaled = true
 	l.Visible = false
@@ -50,8 +55,22 @@ local function ensure(): TextLabel
 	return l
 end
 
+local function panelOpen(): boolean
+	local playerGui = (Players.LocalPlayer :: Player):FindFirstChildOfClass("PlayerGui")
+	if not playerGui then
+		return false
+	end
+	for _, child in playerGui:GetChildren() do
+		if child:IsA("ScreenGui") and child.Enabled and table.find(PANELS, child.Name) then
+			return true
+		end
+	end
+	return false
+end
+
 function Toast.show(text: string)
 	local l = ensure()
+	l.Position = UDim2.fromScale(0.5, if panelOpen() then TOP_Y else NORMAL_Y)
 	token += 1
 	local mine = token
 	local theme = UiTheme.get()
