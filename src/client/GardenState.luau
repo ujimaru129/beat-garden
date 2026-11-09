@@ -14,7 +14,9 @@ export type Snapshot = {
 	coins: number,
 	seeds: { [string]: number },
 	fruits: { FruitInfo },
-	plot: { seedId: string, fraction: number, stage: string }?,
+	plots: { [string]: { seedId: string, fraction: number, stage: string } }, -- keyed by plot key
+	plotCount: number, -- coin plots bought so far
+	hasPlotPass: boolean,
 	settings: { latencyMs: number },
 	persistent: boolean,
 	tutorialStep: number,

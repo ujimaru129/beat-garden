@@ -8,6 +8,7 @@
 -- After every change the server pushes a snapshot to that player with the GardenUpdate event.
 
 local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -25,6 +26,7 @@ local PlayerData = require(ReplicatedStorage.Shared.Data.PlayerData)
 local PlayerStore = require(script.Parent.PlayerStore)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
+local Plots = require(ReplicatedStorage.Shared.Garden.Plots)
 local Shop = require(ReplicatedStorage.Shared.Garden.Shop)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Trading = require(script.Parent.Trading)
@@ -34,9 +36,6 @@ local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
 local Garden = {}
 
-local PLOT_KEY = "1" -- one plot for now (Extra Plot adds more keys)
-local PLOT_SPACING = 14 -- studs between neighbouring plots
-local PLOT_DISTANCE = 10 -- studs from the spawn
 -- The spawn pad is 12 studs wide and players appear anywhere on it, so the prompt must reach from the
 -- far corner. The server allows some extra distance on top for lag.
 local PROMPT_RANGE = 20
@@ -46,6 +45,7 @@ local AUTOSAVE_SECONDS = 60
 -- Short cooldown in Studio so it can be tried repeatedly.
 local COOLDOWN_SECONDS = if RunService:IsStudio() then 10 else Growth.TendCooldownSeconds
 
+local PLANT_SCALE = 1.35 -- the plants grow with the bigger plots
 local STAGE_LOOK: { [string]: { size: number, color: Color3 } } = {
 	Seed = { size = 0.8, color = Palette.Base.Sumi },
 	Sprout = { size = 1.8, color = Palette.Hues.Matcha.Day },
@@ -60,15 +60,23 @@ type Pending = {
 	difficulty: Difficulty.Name,
 	songName: string,
 	favorite: boolean, -- the song's genre is the planted seed's favourite
+	plotKey: string, -- the plot being tended
+}
+
+-- The parts of one plot: the soil (carries the attributes the client reads), the plant and the prompt.
+type Node = {
+	soil: Part,
+	plant: Part,
+	prompt: ProximityPrompt,
+	decor: { BasePart }, -- the frame, posts and lights of the plot (fancier with the plot number)
 }
 
 type Session = {
 	player: Player,
 	slot: number,
 	store: PlayerStore.Session,
-	soil: Part,
-	plant: Part,
-	prompt: ProximityPrompt,
+	nodes: { [string]: Node }, -- plot key -> parts (all of Plots.Max, locked ones included)
+	hasPass: boolean, -- owns the Plot Pass game pass
 	pending: Pending?,
 	nextAutoCare: number, -- unix seconds: when the equipped spirit tends next
 }
@@ -80,8 +88,29 @@ local function data(s: Session): PlayerData.Data
 	return s.store.data
 end
 
-local function plotOf(s: Session): Growth.Plot?
-	return data(s).plots[PLOT_KEY]
+local function plotOf(s: Session, key: string): Growth.Plot?
+	return data(s).plots[key]
+end
+
+local function hasAnyPlant(s: Session): boolean
+	return next(data(s).plots) ~= nil
+end
+
+-- Can the player use plot number `index`? Coin plots once bought, pass plots with the game pass.
+local function isOpen(s: Session, index: number): boolean
+	if Plots.isPass(index) then
+		return s.hasPass
+	end
+	return index <= data(s).plotCount
+end
+
+-- A plot key from a request: valid and open to this player. Otherwise nil.
+local function ownedKey(s: Session, key: unknown): string?
+	local index = Plots.indexOf(key)
+	if index and isOpen(s, index) then
+		return key :: string
+	end
+	return nil
 end
 
 local function seedOf(plot: Growth.Plot): Seeds.Seed
@@ -123,17 +152,18 @@ local function snapshot(s: Session): any
 			value = Economy.fruitValue(fruit.seedId, fruit.mutation, fruit.weight),
 		})
 	end
-	local plotInfo = nil
-	local plot = plotOf(s)
-	if plot then
+	local plotInfo = {}
+	for key, plot in d.plots do
 		local fraction = fractionOf(plot, now)
-		plotInfo = { seedId = plot.seedId, fraction = fraction, stage = Growth.stageFor(fraction) }
+		plotInfo[key] = { seedId = plot.seedId, fraction = fraction, stage = Growth.stageFor(fraction) }
 	end
 	return {
 		coins = d.coins,
 		seeds = table.clone(d.seeds),
 		fruits = fruits,
-		plot = plotInfo,
+		plots = plotInfo,
+		plotCount = d.plotCount,
+		hasPlotPass = s.hasPass,
 		settings = { latencyMs = d.settings.latencyMs },
 		persistent = s.store.persistent,
 		tutorialStep = d.tutorialStep,
@@ -148,7 +178,7 @@ end
 -- cheapest seed would be a dead end, so the starter seed is given again.
 local function rescueIfStuck(s: Session)
 	local d = data(s)
-	if plotOf(s) or next(d.seeds) ~= nil or #d.fruits > 0 then
+	if hasAnyPlant(s) or next(d.seeds) ~= nil or #d.fruits > 0 then
 		return
 	end
 	local cheapest = math.huge
@@ -166,28 +196,74 @@ local function push(s: Session)
 	updateEvent:FireClient(s.player, snapshot(s))
 end
 
--- Redraws the plant and the prompt from the data.
-local function refresh(s: Session)
-	local spiritDef = equippedSpiritDef(s)
-	s.soil:SetAttribute("SpiritKind", if spiritDef then spiritDef.kind else nil)
-	local plot = plotOf(s)
+-- Redraws one plot's plant and prompt from the data.
+local function refreshPlot(s: Session, key: string, spiritKind: string?)
+	local node = s.nodes[key]
+	local index = Plots.indexOf(key) :: number
+	local soil, plantPart, prompt = node.soil, node.plant, node.prompt
+	soil:SetAttribute("SpiritKind", spiritKind)
+	local open = isOpen(s, index)
+	for _, part in node.decor do
+		part.Transparency = if open then (part:GetAttribute("BaseTransparency") :: number? or 0) else 0.75
+	end
+	if not open then
+		-- not bought yet: a dim, see-through pad with an Unlock prompt
+		soil.Transparency = 0.6
+		plantPart.Transparency = 1
+		soil:SetAttribute("Stage", "Locked")
+		soil:SetAttribute("Fraction", 0)
+		local nextIndex = data(s).plotCount + 1
+		soil:SetAttribute("NextUnlock", nextIndex)
+		if Plots.isPass(index) then
+			soil:SetAttribute("Pass", true)
+			soil:SetAttribute("Price", nil)
+			prompt.ActionText = "Plot Pass"
+			prompt.ObjectText = `Premium plot {index}`
+		elseif index == nextIndex then
+			soil:SetAttribute("Pass", nil)
+			soil:SetAttribute("Price", Plots.Price[index])
+			prompt.ActionText = "Unlock"
+			prompt.ObjectText = `Plot {index}  -  {Plots.Price[index]} coins`
+		else
+			soil:SetAttribute("Pass", nil)
+			soil:SetAttribute("Price", nil)
+			prompt.ActionText = "Locked"
+			prompt.ObjectText = `Buy plot {nextIndex} first`
+		end
+		return
+	end
+	soil:SetAttribute("Pass", nil)
+	soil:SetAttribute("NextUnlock", nil)
+	soil.Transparency = 0
+	prompt.ObjectText = `{s.player.DisplayName}'s plant`
+	local plot = plotOf(s, key)
 	if not plot then
-		s.plant.Transparency = 1
-		s.soil:SetAttribute("Stage", "Empty")
-		s.soil:SetAttribute("Fraction", 0)
-		s.prompt.ActionText = "Plant"
+		plantPart.Transparency = 1
+		soil:SetAttribute("Stage", "Empty")
+		soil:SetAttribute("Fraction", 0)
+		prompt.ActionText = "Plant"
 		return
 	end
 	local fraction = fractionOf(plot, os.time())
 	local stage = Growth.stageFor(fraction)
 	local look = STAGE_LOOK[stage]
-	s.plant.Transparency = 0
-	s.plant.Size = Vector3.new(look.size, look.size, look.size)
-	s.plant.Color = look.color
-	s.plant.Position = s.soil.Position + Vector3.new(0, s.soil.Size.Y / 2 + look.size / 2, 0)
-	s.soil:SetAttribute("Stage", stage)
-	s.soil:SetAttribute("Fraction", fraction)
-	s.prompt.ActionText = if stage == "Fruit" then "Harvest" else "Tend"
+	plantPart.Transparency = 0
+	local size = look.size * PLANT_SCALE
+	plantPart.Size = Vector3.new(size, size, size)
+	plantPart.Color = look.color
+	plantPart.Position = soil.Position + Vector3.new(0, soil.Size.Y / 2 + size / 2, 0)
+	soil:SetAttribute("Stage", stage)
+	soil:SetAttribute("Fraction", fraction)
+	prompt.ActionText = if stage == "Fruit" then "Harvest" else "Tend"
+end
+
+-- Redraws every plot of the player.
+local function refresh(s: Session)
+	local spiritDef = equippedSpiritDef(s)
+	local kind = if spiritDef then spiritDef.kind else nil
+	for key in s.nodes do
+		refreshPlot(s, key, kind)
+	end
 end
 
 local function spawnPosition(): Vector3
@@ -212,19 +288,123 @@ local function freeSlot(): number
 	return slot
 end
 
-local function buildPlotParts(player: Player, slot: number, container: Instance): (Part, Part, ProximityPrompt)
-	local base = spawnPosition()
-	local x = base.X + (slot - 1) * PLOT_SPACING
-	local z = base.Z - PLOT_DISTANCE
+local TIER_FRAME: { Color3 } = {
+	Color3.fromHex("#FFC4DD"), -- 1 candy pink
+	Color3.fromHex("#9AD8FF"), -- 2 sky
+	Color3.fromHex("#FF4FA3"), -- 3 neon pink (alternates with blue)
+	Color3.fromHex("#B07CFF"), -- 4 neon violet
+	Color3.fromHex("#FFD84D"), -- 5 gold
+}
+local NEON_CYCLE: { Color3 } = {
+	Color3.fromHex("#FF4FA3"),
+	Color3.fromHex("#3FC8FF"),
+	Color3.fromHex("#3DFFB0"),
+	Color3.fromHex("#FFE14D"),
+}
 
+-- The frame, corner posts and lights of a plot. The higher the plot number, the fancier: a candy frame, then
+-- posts, then neon, then taller posts, then gold with sparkles (the pass plots).
+local function buildDecor(soil: Part, index: number): { BasePart }
+	local tier = Plots.tier(index)
+	local parts: { BasePart } = {}
+	local top = soil.Size.Y / 2
+	local half = soil.Size.X / 2
+	local function add(part: Part, localOffset: Vector3, glow: boolean?)
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanQuery = false
+		part.CanTouch = false
+		part.CastShadow = false
+		part.CFrame = soil.CFrame * CFrame.new(localOffset)
+		if glow then
+			part:SetAttribute("PlotGlow", true) -- the client pulses these on the beat
+		end
+		part.Parent = soil
+		table.insert(parts, part)
+	end
+	local frameColor = TIER_FRAME[tier]
+	local neon = tier >= 3
+	for _, side in { -1, 1 } do
+		local bar = Instance.new("Part")
+		bar.Name = "FrameX"
+		bar.Size = Vector3.new(soil.Size.X + 0.4, 0.35, 0.4)
+		bar.Color = if tier == 3 then NEON_CYCLE[(index + side) % 2 + 1] else frameColor
+		bar.Material = if neon then Enum.Material.Neon else Enum.Material.SmoothPlastic
+		add(bar, Vector3.new(0, top + 0.1, side * half))
+		local bar2 = Instance.new("Part")
+		bar2.Name = "FrameZ"
+		bar2.Size = Vector3.new(0.4, 0.35, soil.Size.Z + 0.4)
+		bar2.Color = bar.Color
+		bar2.Material = bar.Material
+		add(bar2, Vector3.new(side * half, top + 0.1, 0))
+	end
+	if tier >= 2 then
+		local height = ({ 0, 1.4, 1.8, 2.3, 2.9 })[tier]
+		local corner = 0
+		for _, sx in { -1, 1 } do
+			for _, sz in { -1, 1 } do
+				corner += 1
+				local post = Instance.new("Part")
+				post.Name = "Post"
+				post.Shape = Enum.PartType.Cylinder
+				post.Size = Vector3.new(height, 0.4, 0.4)
+				post.Color = if tier == 2 then Color3.new(1, 1, 1) else Color3.fromHex("#2A1B5C")
+				post.Material = Enum.Material.SmoothPlastic
+				post.CFrame = soil.CFrame
+					* CFrame.new(sx * half, top + height / 2, sz * half)
+					* CFrame.Angles(0, 0, math.pi / 2)
+				post.Anchored = true
+				post.CanCollide = false
+				post.CanQuery = false
+				post.CanTouch = false
+				post.CastShadow = false
+				post.Parent = soil
+				table.insert(parts, post)
+				local ball = Instance.new("Part")
+				ball.Name = "PostLight"
+				ball.Shape = Enum.PartType.Ball
+				ball.Size = Vector3.new(0.9, 0.9, 0.9)
+				ball.Color = if tier == 2
+					then Color3.fromHex("#FFF3A8")
+					elseif tier == 5 then NEON_CYCLE[corner]
+					elseif tier == 4 then Color3.fromHex("#FFE14D")
+					else NEON_CYCLE[(corner + index) % 4 + 1]
+				ball.Material = if tier >= 3 then Enum.Material.Neon else Enum.Material.SmoothPlastic
+				add(ball, Vector3.new(sx * half, top + height + 0.3, sz * half), tier >= 3)
+				if tier == 5 then
+					local sparkles = Instance.new("ParticleEmitter")
+					sparkles.Rate = 4
+					sparkles.Lifetime = NumberRange.new(1.2, 2)
+					sparkles.Speed = NumberRange.new(0.5, 1.5)
+					sparkles.SpreadAngle = Vector2.new(180, 180)
+					sparkles.LightEmission = 1
+					sparkles.Size = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 0.5),
+						NumberSequenceKeypoint.new(1, 0),
+					})
+					sparkles.Color = ColorSequence.new(Color3.fromHex("#FFE9A0"))
+					sparkles.Parent = ball
+				end
+			end
+		end
+	end
+	return parts
+end
+
+local function buildPlotNode(player: Player, slot: number, index: number, container: Instance): Node
+	local base = spawnPosition()
+	local x, z, angle = Plots.place(base.X, base.Z, slot, index)
 	local soil = Instance.new("Part")
-	soil.Name = `Plot_{player.UserId}`
+	soil.Name = `Plot_{player.UserId}_{index}`
 	soil.Anchored = true
-	soil.Size = Vector3.new(7, 0.6, 7)
-	soil.Position = Vector3.new(x, groundY(x, z) + 0.3, z)
+	soil.Size = Vector3.new(10, 0.6, 10)
+	-- Turned so that the top of a SurfaceGui (the marks painted on the plot) points away from the hub: the text
+	-- reads upright for a player walking in from the hub.
+	soil.CFrame = CFrame.new(x, groundY(x, z) + 0.3, z) * CFrame.Angles(0, -angle - math.pi, 0)
 	soil.Color = Palette.Base.YoruGround
 	soil.Material = Enum.Material.SmoothPlastic
 	soil:SetAttribute("OwnerUserId", player.UserId)
+	soil:SetAttribute("PlotKey", Plots.keyOf(index))
 	soil.Parent = container
 
 	local plant = Instance.new("Part")
@@ -246,16 +426,76 @@ local function buildPlotParts(player: Player, slot: number, container: Instance)
 	prompt.UIOffset = Vector2.new(0, -90) -- lift the button off the bottom edge of a phone screen
 	prompt.Parent = soil
 
-	return soil, plant, prompt
+	return { soil = soil, plant = plant, prompt = prompt, decor = buildDecor(soil, index) }
 end
 
-local function distanceToPlot(s: Session): number
+-- Your territory, easy to find: a name sign at its entrance for everyone, and (only on the owner's screen, see
+-- PlotVisuals) a tall light beam over it and a glowing path of tiles leading from the hub.
+local function buildTerritoryMarker(player: Player, slot: number, container: Instance): CFrame
+	local base = spawnPosition()
+	local color = Color3.fromHSV(((slot - 1) % Plots.Slots) / Plots.Slots, 0.65, 1)
+	local folder = Instance.new("Folder")
+	folder.Name = `Territory_{player.UserId}`
+	folder:SetAttribute("OwnerUserId", player.UserId)
+	folder.Parent = container
+
+	local angle = ((slot - 1) % Plots.Slots) / Plots.Slots * math.pi * 2
+	-- A point on the territory's centre line: `radial` studs from the hub centre, `tangent` to the side.
+	local function placeAt(radial: number, tangent: number, y: number): Vector3
+		local px = base.X + math.cos(angle) * radial - math.sin(angle) * tangent
+		local pz = base.Z + math.sin(angle) * radial + math.cos(angle) * tangent
+		return Vector3.new(px, groundY(px, pz) + y, pz)
+	end
+	local function part(props: { [string]: any }): Part
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		for k, v in props do
+			(p :: any)[k] = v
+		end
+		p.Parent = folder
+		return p
+	end
+
+	-- Owner-only beacon over the middle of the territory.
+	local middle = placeAt(Plots.RingRadius + Plots.Spacing, 0, 0)
+	part({
+		Name = "Beacon",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(90, 3, 3),
+		CFrame = CFrame.new(middle + Vector3.new(0, 45, 0)) * CFrame.Angles(0, 0, math.pi / 2),
+		Material = Enum.Material.Neon,
+		Color = color,
+		Transparency = 0.55,
+	}):SetAttribute("OwnerOnly", true)
+	-- Owner-only path of glowing tiles from the hub to the entrance.
+	local r = 36
+	while r < Plots.RingRadius - 12 do
+		local at = placeAt(r, 0, 0.2)
+		local tile = part({
+			Name = "PathTile",
+			Size = Vector3.new(4, 0.2, 4),
+			CFrame = CFrame.new(at) * CFrame.Angles(0, -angle + math.pi / 4, 0),
+			Material = Enum.Material.Neon,
+			Color = color,
+			Transparency = 0.25,
+		})
+		tile:SetAttribute("OwnerOnly", true)
+		r += 6
+	end
+	return CFrame.lookAt(placeAt(Plots.RingRadius - 14, 0, 4), placeAt(Plots.RingRadius, 0, 4))
+end
+
+local function distanceToPlot(s: Session, key: string): number
 	local character = s.player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not (root and root:IsA("BasePart")) then
 		return math.huge
 	end
-	return (root.Position - s.soil.Position).Magnitude
+	return (root.Position - s.nodes[key].soil.Position).Magnitude
 end
 
 local function fail(reason: string): any
@@ -266,11 +506,11 @@ end
 -- Tend (the rhythm run)
 
 local function tendBegin(s: Session, payload: unknown): any
-	-- payload = { difficulty = "Easy" | "Normal" | "Hard", songId = "..." }
+	-- payload = { difficulty = "Easy" | "Normal" | "Hard", songId = "...", plotKey = "1" }
 	if type(payload) ~= "table" then
 		return fail("bad request")
 	end
-	local request = payload :: { difficulty: unknown, songId: unknown }
+	local request = payload :: { difficulty: unknown, songId: unknown, plotKey: unknown }
 	if type(request.difficulty) ~= "string" or table.find(Difficulty.Names, request.difficulty) == nil then
 		return fail("bad difficulty")
 	end
@@ -278,11 +518,15 @@ local function tendBegin(s: Session, payload: unknown): any
 	if type(request.songId) ~= "string" or Songs.get(request.songId) == nil then
 		return fail("unknown song")
 	end
-	local plot = plotOf(s)
+	local plotKey = ownedKey(s, request.plotKey)
+	if not plotKey then
+		return fail("unknown plot")
+	end
+	local plot = plotOf(s, plotKey)
 	if not plot then
 		return fail("nothing planted")
 	end
-	if distanceToPlot(s) > TEND_RANGE then
+	if distanceToPlot(s, plotKey) > TEND_RANGE then
 		return fail("too far from the plant")
 	end
 	local now = os.time()
@@ -305,6 +549,7 @@ local function tendBegin(s: Session, payload: unknown): any
 		difficulty = difficulty,
 		songName = picked.name,
 		favorite = seedOf(plot).favoriteGenre == picked.genre,
+		plotKey = plotKey,
 	}
 	return {
 		ok = true,
@@ -325,7 +570,7 @@ local function tendSubmit(s: Session, payload: unknown): any
 	if not pending then
 		return fail("no run in progress")
 	end
-	local plot = plotOf(s)
+	local plot = plotOf(s, pending.plotKey)
 	if not plot then
 		return fail("nothing planted")
 	end
@@ -380,38 +625,52 @@ end
 -- Garden actions
 
 local function plant(s: Session, payload: unknown): any
-	if type(payload) ~= "string" or Seeds.get(payload) == nil then
+	-- payload = { seedId = "...", plotKey = "1" }
+	if type(payload) ~= "table" then
+		return fail("bad request")
+	end
+	local request = payload :: { seedId: unknown, plotKey: unknown }
+	local seedId = request.seedId
+	if type(seedId) ~= "string" or Seeds.get(seedId) == nil then
 		return fail("unknown seed")
 	end
-	if plotOf(s) then
+	local plotKey = ownedKey(s, request.plotKey)
+	if not plotKey then
+		return fail("unknown plot")
+	end
+	if plotOf(s, plotKey) then
 		return fail("the plot is not empty")
 	end
-	if distanceToPlot(s) > TEND_RANGE then
+	if distanceToPlot(s, plotKey) > TEND_RANGE then
 		return fail("too far from the plot")
 	end
 	local d = data(s)
-	local count = d.seeds[payload] or 0
+	local count = d.seeds[seedId] or 0
 	if count < 1 then
 		return fail("you have no such seed")
 	end
 	if count > 1 then
-		d.seeds[payload] = count - 1
+		d.seeds[seedId] = count - 1
 	else
-		d.seeds[payload] = nil
+		d.seeds[seedId] = nil
 	end
-	d.plots[PLOT_KEY] = Growth.newPlot(payload, os.time())
+	d.plots[plotKey] = Growth.newPlot(seedId, os.time())
 	advanceTutorial(s, "plant")
 	refresh(s)
 	push(s)
-	return { ok = true, seedId = payload }
+	return { ok = true, seedId = seedId }
 end
 
-local function harvest(s: Session): any
-	local plot = plotOf(s)
+local function harvest(s: Session, payload: unknown): any
+	local plotKey = ownedKey(s, payload)
+	if not plotKey then
+		return fail("unknown plot")
+	end
+	local plot = plotOf(s, plotKey)
 	if not plot then
 		return fail("nothing planted")
 	end
-	if distanceToPlot(s) > TEND_RANGE then
+	if distanceToPlot(s, plotKey) > TEND_RANGE then
 		return fail("too far from the plant")
 	end
 	if Growth.stageFor(fractionOf(plot, os.time())) ~= "Fruit" then
@@ -436,7 +695,7 @@ local function harvest(s: Session): any
 			d.eggs += Collection.CompletionEggs
 		end
 	end
-	d.plots[PLOT_KEY] = nil
+	d.plots[plotKey] = nil
 	advanceTutorial(s, "harvest")
 	refresh(s)
 	push(s)
@@ -452,6 +711,25 @@ local function harvest(s: Session): any
 		discovery = discovery,
 		completionEggs = if discovery.isNew and discovery.completedSeed then Collection.CompletionEggs else 0,
 	}
+end
+
+-- Buys the next plot. Plots are bought in order, so the key must be the one after the last owned.
+local function unlockPlot(s: Session, payload: unknown): any
+	local index = Plots.indexOf(payload)
+	local d = data(s)
+	if not index or Plots.isPass(index) or index ~= d.plotCount + 1 then
+		return fail("that plot is not available")
+	end
+	local price = Plots.Price[index]
+	if d.coins < price then
+		return fail("not enough coins")
+	end
+	d.coins -= price
+	d.plotCount = index
+	refresh(s)
+	push(s)
+	print(`[Garden] {s.player.Name}: unlocked plot {index} for {price}`)
+	return { ok = true, index = index, price = price }
 end
 
 local function buy(s: Session, payload: unknown): any
@@ -553,20 +831,24 @@ local function equip(s: Session, payload: unknown): any
 	return { ok = true }
 end
 
--- Called every second: an equipped spirit tends a growing plant on its own timer.
+-- Called every second: an equipped spirit tends every growing plant on its own timer.
 local function autoCare(s: Session, now: number)
 	local def = equippedSpiritDef(s)
-	local plot = plotOf(s)
-	if not def or not plot or now < s.nextAutoCare then
+	if not def or now < s.nextAutoCare then
 		return
 	end
 	s.nextAutoCare = now + def.autoCareSeconds
-	if Growth.stageFor(fractionOf(plot, now)) == "Fruit" then
-		return
+	local cared = false
+	for _, plot in data(s).plots do
+		if Growth.stageFor(fractionOf(plot, now)) ~= "Fruit" then
+			plot.careGauge += def.autoCarePoints
+			cared = true
+		end
 	end
-	plot.careGauge += def.autoCarePoints
-	refresh(s)
-	push(s)
+	if cared then
+		refresh(s)
+		push(s)
+	end
 end
 
 local function skipTutorial(s: Session): any
@@ -586,6 +868,17 @@ local function devReset(s: Session): any
 	push(s)
 	print(`[Garden] {s.player.Name}: data reset (Studio)`)
 	return { ok = true }
+end
+
+-- Studio only: switches the Plot Pass on and off so the premium plots can be tried.
+local function devPlotPass(s: Session): any
+	if not RunService:IsStudio() then
+		return fail("not available")
+	end
+	s.hasPass = not s.hasPass
+	refresh(s)
+	push(s)
+	return { ok = true, hasPass = s.hasPass }
 end
 
 -- Studio only: gives coins so the shop, eggs and trading can be tried without waiting.
@@ -610,18 +903,40 @@ local function createSession(player: Player, container: Instance): Session?
 		return nil
 	end
 	local slot = freeSlot()
-	local soil, plantPart, prompt = buildPlotParts(player, slot, container)
+	local nodes: { [string]: Node } = {}
+	for index = 1, Plots.Max do
+		nodes[Plots.keyOf(index)] = buildPlotNode(player, slot, index, container)
+	end
+	local entrance = buildTerritoryMarker(player, slot, container)
 	local s: Session = {
 		player = player,
 		slot = slot,
 		store = store,
-		soil = soil,
-		plant = plantPart,
-		prompt = prompt,
+		nodes = nodes,
+		hasPass = false,
 		pending = nil,
 		nextAutoCare = 0,
 	}
 	sessions[player] = s
+	-- Every spawn puts the player at the entrance of their own territory, facing the plots.
+	local function toEntrance(character: Model)
+		task.defer(function()
+			if character.Parent then
+				character:PivotTo(entrance + Vector3.new(0, 3, 0))
+			end
+		end)
+	end
+	player.CharacterAdded:Connect(toEntrance)
+	if player.Character then
+		toEntrance(player.Character)
+	end
+	-- The Plot Pass: owned game passes are checked once at join (and again when one is bought).
+	if Plots.PassId > 0 then
+		local ok, owns = pcall(function()
+			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, Plots.PassId)
+		end)
+		s.hasPass = ok and owns == true
+	end
 	refresh(s)
 	push(s)
 	if not store.persistent then
@@ -687,7 +1002,9 @@ function Garden.start()
 		elseif action == "plant" then
 			return plant(s, payload)
 		elseif action == "harvest" then
-			return harvest(s)
+			return harvest(s, payload)
+		elseif action == "unlockPlot" then
+			return unlockPlot(s, payload)
 		elseif action == "buy" then
 			return buy(s, payload)
 		elseif action == "sellAll" then
@@ -704,11 +1021,25 @@ function Garden.start()
 			return skipTutorial(s)
 		elseif action == "devReset" then
 			return devReset(s)
+		elseif action == "devPlotPass" then
+			return devPlotPass(s)
 		elseif action == "devGrant" then
 			return devGrant(s, payload)
 		end
 		return nil
 	end
+
+	-- A Plot Pass bought in the game takes effect at once.
+	MarketplaceService.PromptGamePassPurchaseFinished:Connect(
+		function(player: Player, passId: number, purchased: boolean)
+			local s = sessions[player]
+			if s and purchased and Plots.PassId > 0 and passId == Plots.PassId then
+				s.hasPass = true
+				refresh(s)
+				push(s)
+			end
+		end
+	)
 
 	local function onPlayerAdded(player: Player)
 		if sessions[player] == nil then
@@ -725,7 +1056,13 @@ function Garden.start()
 		sessions[player] = nil
 		if s then
 			PlayerStore.save(s.store, true)
-			s.soil:Destroy()
+			for _, node in s.nodes do
+				node.soil:Destroy()
+			end
+			local marker = container:FindFirstChild(`Territory_{player.UserId}`)
+			if marker then
+				marker:Destroy()
+			end
 		end
 	end)
 

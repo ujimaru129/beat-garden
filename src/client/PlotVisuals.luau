@@ -5,11 +5,14 @@
 -- Both follow attributes the server already sets on each plot (SpiritKind, Stage).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Atmosphere = require(script.Parent.Atmosphere)
 local Palette = require(ReplicatedStorage.Shared.Palette)
+local PlotMarks = require(script.Parent.PlotMarks)
 
 local PlotVisuals = {}
 
@@ -20,7 +23,14 @@ local SPIRIT_COLORS: { [string]: Color3 } = {
 	Kitsune = Palette.Hues.Yuzu.Night,
 }
 
-type Entry = { soil: Part, light: PointLight, orb: Part?, orbKind: string? }
+type Entry = {
+	soil: Part,
+	light: PointLight,
+	orb: Part?,
+	orbKind: string?,
+	glows: { BasePart },
+	marks: PlotMarks.Marks,
+}
 
 function PlotVisuals.start()
 	local entries: { [Part]: Entry } = {}
@@ -28,7 +38,25 @@ function PlotVisuals.start()
 	localFolder.Name = "PlotVisuals"
 	localFolder.Parent = Workspace
 
+	-- The beacon and path of a territory are for its owner only: hide them on everyone else's screen.
+	local function trackMarker(folder: Folder)
+		local mine = folder:GetAttribute("OwnerUserId") == (Players.LocalPlayer :: Player).UserId
+		local function apply(inst: Instance)
+			if inst:IsA("BasePart") and inst:GetAttribute("OwnerOnly") == true then
+				inst.LocalTransparencyModifier = if mine then 0 else 1
+			end
+		end
+		folder.DescendantAdded:Connect(apply)
+		for _, inst in folder:GetDescendants() do
+			apply(inst)
+		end
+	end
+
 	local function track(soil: Instance)
+		if soil:IsA("Folder") and string.sub(soil.Name, 1, 10) == "Territory_" then
+			trackMarker(soil)
+			return
+		end
 		if not soil:IsA("Part") or entries[soil] then
 			return
 		end
@@ -41,7 +69,27 @@ function PlotVisuals.start()
 		light.Range = 14
 		light.Brightness = 0
 		light.Parent = plant
-		entries[soil] = { soil = soil, light = light, orb = nil, orbKind = nil }
+		local glows: { BasePart } = {}
+		for _, child in soil:GetChildren() do
+			if child:IsA("BasePart") and child:GetAttribute("PlotGlow") == true then
+				table.insert(glows, child)
+			end
+		end
+		local mine = soil:GetAttribute("OwnerUserId") == (Players.LocalPlayer :: Player).UserId
+		entries[soil] = {
+			soil = soil,
+			light = light,
+			orb = nil,
+			orbKind = nil,
+			glows = glows,
+			marks = PlotMarks.attach(soil, mine),
+		}
+		-- the decorations may arrive after the plant: pick up the lights that come later too
+		soil.ChildAdded:Connect(function(child)
+			if child:IsA("BasePart") and child:GetAttribute("PlotGlow") == true then
+				table.insert(glows, child)
+			end
+		end)
 		soil.Destroying:Connect(function()
 			local entry = entries[soil]
 			entries[soil] = nil
@@ -60,6 +108,20 @@ function PlotVisuals.start()
 		task.spawn(track, child)
 	end
 
+	-- The plot whose prompt is on screen pops up (its mark grows and bobs).
+	ProximityPromptService.PromptShown:Connect(function(prompt: ProximityPrompt)
+		local entry = if prompt.Name == "TendPrompt" then entries[prompt.Parent :: any] else nil
+		if entry then
+			entry.marks.setFocus(true)
+		end
+	end)
+	ProximityPromptService.PromptHidden:Connect(function(prompt: ProximityPrompt)
+		local entry = if prompt.Name == "TendPrompt" then entries[prompt.Parent :: any] else nil
+		if entry then
+			entry.marks.setFocus(false)
+		end
+	end)
+
 	local lite = Atmosphere.isLite()
 
 	RunService.RenderStepped:Connect(function()
@@ -69,6 +131,13 @@ function PlotVisuals.start()
 		local night = Atmosphere.timeOfDay() == "Night"
 
 		for soil, entry in entries do
+			entry.marks.update(os.clock())
+			-- the neon lights of the fancier plots pulse on the beat
+			if soil:GetAttribute("Stage") ~= "Locked" then
+				for _, glow in entry.glows do
+					glow.Transparency = 0.45 * (1 - beat) * (1 - beat)
+				end
+			end
 			local plant = soil:FindFirstChild("Plant")
 			if plant and plant:IsA("BasePart") then
 				entry.light.Color = plant.Color

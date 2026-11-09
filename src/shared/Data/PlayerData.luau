@@ -5,6 +5,7 @@
 
 local Collection = require(script.Parent.Parent.Garden.Collection)
 local Growth = require(script.Parent.Parent.Garden.Growth)
+local Plots = require(script.Parent.Parent.Garden.Plots)
 local Seeds = require(script.Parent.Parent.Garden.Seeds)
 local Spirits = require(script.Parent.Parent.Garden.Spirits)
 local Tutorial = require(script.Parent.Parent.Garden.Tutorial)
@@ -23,7 +24,8 @@ export type SpiritInstance = {
 export type Data = {
 	v: number,
 	coins: number,
-	plots: { [string]: Growth.Plot }, -- keyed "1", "2", ... (one plot for now)
+	plotCount: number, -- how many coin plots the player has bought (1..Plots.CoinMax)
+	plots: { [string]: Growth.Plot }, -- keyed "1", "2", ... (the plants growing in them)
 	seeds: { [string]: number }, -- seedId -> count
 	fruits: { Fruit },
 	eggs: number,
@@ -52,6 +54,7 @@ function PlayerData.new(): Data
 	return {
 		v = PlayerData.Version,
 		coins = 0,
+		plotCount = 1,
 		plots = {},
 		seeds = { [Seeds.StarterSeedId] = 1 },
 		fruits = {},
@@ -88,12 +91,17 @@ function PlayerData.sanitize(raw: any): Data
 
 	data.coins = math.floor(num(raw.coins, 0, 0))
 
+	data.plotCount = math.floor(num(raw.plotCount, 1, 1, Plots.CoinMax))
 	if type(raw.plots) == "table" then
 		data.plots = {}
 		for key, plot in raw.plots do
+			local index = Plots.indexOf(key)
 			local clean = sanitizePlot(plot)
-			if clean and type(key) == "string" then
+			if clean and index then
 				data.plots[key] = clean
+				if not Plots.isPass(index) then
+					data.plotCount = math.max(data.plotCount, index) -- a plant in a plot means the plot is owned
+				end
 			end
 		end
 	end

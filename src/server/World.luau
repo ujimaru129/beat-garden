@@ -9,15 +9,18 @@
 -- raycasting down onto it.
 
 local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local World = {}
 
 local hex = Color3.fromHex
 
+local Plots = require(ReplicatedStorage.Shared.Garden.Plots)
+
 export type Tint = { day: Color3, night: Color3, glow: boolean? }
 
-local ISLAND_RADIUS = 90
+local ISLAND_RADIUS = 125
 local WALL_HEIGHT = 40
 
 -- Pastel candy colours by day. By night the big bodies turn deep and dark: a large Neon surface blows up into
@@ -45,16 +48,26 @@ end
 
 local FLOOR_NIGHT = { hex("#33207A"), hex("#241868"), hex("#1B2A6B"), hex("#3A2480"), hex("#2B1B6E"), hex("#33207A") }
 
--- Where the player lives: around the spawn, the two shops and the row of plots no prop may stand
--- (a cupcake on the spawn put the camera inside its frosting).
+-- Where the player lives: the hub (spawn and shops) in the middle and the ring of garden territories around it
+-- (Shared/Garden/Plots). No prop may stand there (a cupcake on the spawn put the camera inside its frosting).
 local playSpot = Vector3.zero
+local BAND_MIN = Plots.RingRadius - 8
+local BAND_MAX = Plots.RingRadius + (Plots.Rows - 1) * Plots.Spacing + 12
 local function blocked(x: number, z: number): boolean
 	local dx, dz = x - playSpot.X, z - playSpot.Z
-	if dx * dx + dz * dz < 30 * 30 then
-		return true
+	local r = math.sqrt(dx * dx + dz * dz)
+	return r < 30 or (r > BAND_MIN and r < BAND_MAX)
+end
+
+-- A prop radius that is not inside the ring of territories: such a radius moves to the hub or to the rim.
+local function unblockRadius(r: number, rng: Random): number
+	if r < BAND_MIN or r > BAND_MAX then
+		return r
 	end
-	-- the strip the plots stand on (they run along +X, 10 studs behind the spawn)
-	return dz > -26 and dz < 10 and dx > -34 and dx < 125
+	if r < (BAND_MIN + BAND_MAX) / 2 then
+		return rng:NextNumber(34, BAND_MIN - 1)
+	end
+	return rng:NextNumber(BAND_MAX + 2, ISLAND_RADIUS - 6)
 end
 
 -- An angle around `center` at `radius` whose spot is free; tries the given angle first.
@@ -228,7 +241,7 @@ local function buildLollipops(root: Folder, center: Vector3, top: number, rng: R
 	local count = 10
 	for i = 1, count do
 		local angle = (i / count) * math.pi * 2 + rng:NextNumber(-0.15, 0.15)
-		local radius = ISLAND_RADIUS * rng:NextNumber(0.62, 0.84)
+		local radius = unblockRadius(ISLAND_RADIUS * rng:NextNumber(0.62, 0.84), rng)
 		angle = freeAngle(center, angle, radius, rng)
 		local base = Vector3.new(center.X + math.cos(angle) * radius, top + 0.4, center.Z + math.sin(angle) * radius)
 		local height = rng:NextNumber(14, 22)
@@ -269,7 +282,7 @@ local function buildCupcakes(root: Folder, center: Vector3, top: number, rng: Ra
 	local count = 8
 	for i = 1, count do
 		local angle = (i / count) * math.pi * 2 + math.pi / count
-		local radius = ISLAND_RADIUS * rng:NextNumber(0.4, 0.55)
+		local radius = unblockRadius(ISLAND_RADIUS * rng:NextNumber(0.4, 0.55), rng)
 		angle = freeAngle(center, angle, radius, rng)
 		local base = Vector3.new(center.X + math.cos(angle) * radius, top + 0.4, center.Z + math.sin(angle) * radius)
 		local size = rng:NextNumber(0.9, 1.3)
@@ -289,7 +302,7 @@ local function buildMacarons(root: Folder, center: Vector3, top: number, rng: Ra
 	local shells = { C.pink, C.mint, C.lemon, C.sky }
 	for i = 1, 5 do
 		local angle = (i / 5) * math.pi * 2 + 0.4
-		local radius = ISLAND_RADIUS * rng:NextNumber(0.25, 0.36)
+		local radius = unblockRadius(ISLAND_RADIUS * rng:NextNumber(0.25, 0.36), rng)
 		angle = freeAngle(center, angle, radius, rng)
 		local radiusM = rng:NextNumber(4.5, 6)
 		local base =
@@ -316,7 +329,7 @@ local function buildGumdrops(root: Folder, center: Vector3, top: number, rng: Ra
 	local colors = { C.pink, C.sky, C.mint, C.lemon, C.grape, C.peach }
 	for i = 1, 22 do
 		local angle = rng:NextNumber(0, math.pi * 2)
-		local radius = ISLAND_RADIUS * math.sqrt(rng:NextNumber(0.04, 0.9))
+		local radius = unblockRadius(ISLAND_RADIUS * math.sqrt(rng:NextNumber(0.04, 0.9)), rng)
 		angle = freeAngle(center, angle, radius, rng)
 		local r = rng:NextNumber(1.8, 4.2)
 		local p = ball(
@@ -335,7 +348,7 @@ local function buildBalloons(root: Folder, center: Vector3, top: number, rng: Ra
 	local colors = { C.pink, C.sky, C.mint, C.lemon, C.grape }
 	for i = 1, 44 do
 		local angle = rng:NextNumber(0, math.pi * 2)
-		local radius = ISLAND_RADIUS * rng:NextNumber(0.25, 0.94)
+		local radius = unblockRadius(ISLAND_RADIUS * rng:NextNumber(0.25, 0.94), rng)
 		angle = freeAngle(center, angle, radius, rng)
 		local x, z = center.X + math.cos(angle) * radius, center.Z + math.sin(angle) * radius
 		local height = rng:NextNumber(14, 52)
@@ -362,7 +375,7 @@ local function buildClouds(root: Folder, center: Vector3, top: number, rng: Rand
 	local count = 18
 	for i = 1, count do
 		local angle = (i / count) * math.pi * 2 + rng:NextNumber(-0.2, 0.2)
-		local radius = ISLAND_RADIUS * rng:NextNumber(1.2, 2.3)
+		local radius = unblockRadius(ISLAND_RADIUS * rng:NextNumber(1.2, 2.3), rng)
 		local y = top + rng:NextNumber(-70, -25)
 		local cx, cz = center.X + math.cos(angle) * radius, center.Z + math.sin(angle) * radius
 		for k = 1, 4 do
@@ -380,7 +393,7 @@ end
 
 -- A rainbow arch of beams behind the plots, and a disco ball hanging above them.
 local function buildSky(root: Folder, center: Vector3, top: number)
-	local archZ = center.Z - ISLAND_RADIUS * 0.6
+	local archZ = center.Z - ISLAND_RADIUS * 0.9
 	local colors = {
 		hex("#FF4F4F"),
 		hex("#FF9A3D"),
@@ -480,8 +493,8 @@ function World.start()
 	local spawn = spawnPosition()
 	playSpot = spawn
 	local top = groundTop()
-	-- Centred on the plot row (plots run along +X at -Z from the spawn) and the shops on the other side.
-	local center = Vector3.new(spawn.X + 35, top, spawn.Z - 5)
+	-- Centred on the spawn: the hub in the middle, the garden territories in a ring around it.
+	local center = Vector3.new(spawn.X, top, spawn.Z)
 	local rng = Random.new(20261108)
 
 	-- The default baseplate is replaced by the island; keep it as an invisible safety net far below.

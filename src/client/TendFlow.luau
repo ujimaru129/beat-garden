@@ -5,6 +5,7 @@
 -- decides every number; this module only shows and plays.
 
 local Players = game:GetService("Players")
+local MarketplaceService = game:GetService("MarketplaceService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -16,6 +17,7 @@ local SongSelect = require(script.Parent.SongSelect)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local ResultScreen = require(script.Parent.ResultScreen)
 local RhythmRunner = require(script.Parent.RhythmRunner)
+local Plots = require(ReplicatedStorage.Shared.Garden.Plots)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Songs = require(ReplicatedStorage.Shared.Songs)
@@ -39,6 +41,7 @@ function TendFlow.start()
 	local player = Players.LocalPlayer :: Player
 	local picking = false
 	local chosenSongId = ""
+	local currentPlotKey = "1" -- the plot whose prompt was used last
 
 	-- The prompt button sits over the lane buttons and the pickers, so it is hidden while they are up.
 	local function setPromptsEnabled(enabled: boolean)
@@ -58,7 +61,8 @@ function TendFlow.start()
 
 	local function onPick(difficulty: string)
 		closePicker()
-		local info = tend:InvokeServer("begin", { difficulty = difficulty, songId = chosenSongId })
+		local info =
+			tend:InvokeServer("begin", { difficulty = difficulty, songId = chosenSongId, plotKey = currentPlotKey })
 		if not (info and info.ok) then
 			setPromptsEnabled(true)
 			Toast.show(`Can't tend now: {if info then info.reason else "no answer"}`)
@@ -123,7 +127,8 @@ function TendFlow.start()
 	local function openSongPicker()
 		-- The planted seed's favourite genre: songs of that genre are marked and listed first.
 		local snapshot = GardenState.get()
-		local seed = if snapshot and snapshot.plot then Seeds.get(snapshot.plot.seedId) else nil
+		local planted = if snapshot then snapshot.plots[currentPlotKey] else nil
+		local seed = if planted then Seeds.get(planted.seedId) else nil
 		local favorite = if seed then seed.favoriteGenre else nil
 		local songs: { Songs.SongData } = table.clone(Songs.List) :: any
 		table.sort(songs, function(a, b)
@@ -169,7 +174,7 @@ function TendFlow.start()
 					text = `{seed.name.en}  x{count}`,
 					onTap = function()
 						seedModal.close()
-						local result = GardenState.call("plant", seed.seedId)
+						local result = GardenState.call("plant", { seedId = seed.seedId, plotKey = currentPlotKey })
 						if result.ok then
 							Toast.show(`Planted {seed.name.en}! Tend it to make it grow`)
 						else
@@ -188,9 +193,77 @@ function TendFlow.start()
 		seedModal.open()
 	end
 
+	-- Unlock (a plot that is not bought yet) ------------------------------------------------
+	local unlockModal = ListModal.create("Unlock a plot", function()
+		picking = false
+		setPromptsEnabled(true)
+	end)
+
+	local function openUnlock(plotKey: string, price: number)
+		unlockModal.setRows({
+			{ text = `Plot {plotKey}: one more plant growing at a time`, note = true },
+			{
+				text = `Unlock for {price} coins`,
+				onTap = function()
+					unlockModal.close()
+					local result = GardenState.call("unlockPlot", plotKey)
+					if result.ok then
+						Toast.show(`Plot {plotKey} unlocked!`)
+					else
+						Toast.show(result.reason or "could not unlock")
+					end
+				end,
+			},
+			{
+				text = "Not now",
+				onTap = function()
+					unlockModal.close()
+				end,
+			},
+		})
+		picking = true
+		setPromptsEnabled(false)
+		unlockModal.open()
+	end
+
+	-- The Plot Pass: premium plots that only the game pass opens.
+	local passModal = ListModal.create("Plot Pass", function()
+		picking = false
+		setPromptsEnabled(true)
+	end)
+
+	local function openPass()
+		passModal.setRows({
+			{
+				text = `The Plot Pass opens {Plots.PassBonus} extra gold plots, on top of the others`,
+				note = true,
+			},
+			{
+				text = "Get the Plot Pass",
+				onTap = function()
+					passModal.close()
+					if Plots.PassId > 0 then
+						MarketplaceService:PromptGamePassPurchase(player, Plots.PassId)
+					else
+						Toast.show("The Plot Pass is coming soon!")
+					end
+				end,
+			},
+			{
+				text = "Not now",
+				onTap = function()
+					passModal.close()
+				end,
+			},
+		})
+		picking = true
+		setPromptsEnabled(false)
+		passModal.open()
+	end
+
 	-- Harvest -------------------------------------------------------------------------------
 	local function harvest(plot: Instance)
-		local result = GardenState.call("harvest")
+		local result = GardenState.call("harvest", currentPlotKey)
 		if not result.ok then
 			Toast.show(result.reason or "could not harvest")
 			return
@@ -224,8 +297,15 @@ function TendFlow.start()
 			Toast.show("This is not your plant")
 			return
 		end
+		currentPlotKey = tostring(plot:GetAttribute("PlotKey") or "1")
 		local stage = plot:GetAttribute("Stage")
-		if stage == "Empty" then
+		if stage == "Locked" and plot:GetAttribute("Pass") == true then
+			openPass()
+		elseif stage == "Locked" and tonumber(plot:GetAttribute("NextUnlock")) ~= tonumber(currentPlotKey) then
+			Toast.show(`Buy plot {tostring(plot:GetAttribute("NextUnlock") or "?")} first`)
+		elseif stage == "Locked" then
+			openUnlock(currentPlotKey, tonumber(plot:GetAttribute("Price")) or 0)
+		elseif stage == "Empty" then
 			openSeedPicker()
 		elseif stage == "Fruit" then
 			harvest(plot)
