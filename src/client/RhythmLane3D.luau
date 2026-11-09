@@ -322,21 +322,22 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	end
 	local beatLow = 1
 
-	-- Night only, out on the plaza beside the lanes (the lanes themselves stay clean so the notes read well):
-	-- a disco floor whose tiles light up in a wave that runs towards the player on the beat. (No tall glowing bars or
-	-- lamp posts: they dazzle.)
+	-- Out on the plaza beside the lanes (the lanes themselves stay clean so the notes read well):
+	-- a floor whose tiles light up in a wave that runs towards the player on the beat: neon disco floor by night,
+	-- soft pastel candy tiles by day. (No tall glowing bars or lamp posts: they dazzle.)
 	local tiles: { { part: BasePart, row: number, col: number } } = {}
 	local TILE = 4
 	local TILE_ROWS = 10
-	if not dayLook then
+	local tileBase = if dayLook then Color3.fromRGB(255, 244, 250) else Color3.fromRGB(20, 14, 60)
+	do
 		for _, side in { -1, 1 } do
 			for col = 0, 2 do
 				for row = 0, TILE_ROWS - 1 do
-					local part = solidProps(Color3.fromRGB(20, 14, 60))
+					local part = solidProps(tileBase)
 					part.Name = "PlazaTile"
 					part.Size = Vector3.new(TILE - 0.3, 0.1, TILE - 0.3)
 					part.CFrame = origin * CFrame.new(side * (2 * LANE_WIDTH + 5 + col * TILE), 0.12, 2 - row * TILE)
-					part.Material = Enum.Material.Neon
+					part.Material = if dayLook then Enum.Material.SmoothPlastic else Enum.Material.Neon
 					table.insert(tiles, { part = make("Part", part, folder) :: BasePart, row = row, col = col })
 				end
 			end
@@ -760,7 +761,8 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 				local wave = (tile.row - beatPos * 2) % 6
 				local glow = math.clamp(1 - wave / 2, 0, 1)
 				local color = laneColor((tile.row + tile.col) % 4)
-				tile.part.Color = Color3.fromRGB(20, 14, 60):Lerp(color, 0.15 + 0.85 * glow)
+				local strength = if dayLook then 0.75 * glow else 0.15 + 0.85 * glow
+				tile.part.Color = tileBase:Lerp(color, strength)
 			end
 		end
 
