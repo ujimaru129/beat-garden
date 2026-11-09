@@ -377,6 +377,7 @@ function TendFlow.start()
 			return
 		end
 		currentPlotKey = tostring(plot:GetAttribute("PlotKey") or "1")
+		player:SetAttribute("LastPlotKey", currentPlotKey) -- the Instant Grow in the shop uses this plant
 		local stage = plot:GetAttribute("Stage")
 		if stage == "Locked" and plot:GetAttribute("Pass") == true then
 			openPass()

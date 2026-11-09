@@ -39,8 +39,8 @@ end
 
 -- Seed ids in stock during `slot`, the starter seed first. Only seeds the garden level has opened are drawn
 -- (`level` nil = every seed).
-function Shop.stock(slot: number, level: number?): { string }
-	local random = generator(slot)
+function Shop.stock(slot: number, level: number?, shift: number?): { string }
+	local random = generator(slot + (shift or 0) * 100003) -- `shift`: a personal restock
 	random() -- the first value of a fresh generator is weak; skip it
 	local result: { string } = { Seeds.StarterSeedId }
 	local pool: { Seeds.Seed } = {}
@@ -69,8 +69,8 @@ function Shop.stock(slot: number, level: number?): { string }
 	return result
 end
 
-function Shop.inStock(seedId: string, now: number, level: number?): boolean
-	return table.find(Shop.stock(Shop.slotOf(now), level), seedId) ~= nil
+function Shop.inStock(seedId: string, now: number, level: number?, shift: number?): boolean
+	return table.find(Shop.stock(Shop.slotOf(now), level, shift), seedId) ~= nil
 end
 
 return table.freeze(Shop)

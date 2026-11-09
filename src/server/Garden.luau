@@ -34,6 +34,7 @@ local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Leaderboard = require(ReplicatedStorage.Shared.Garden.Leaderboard)
 local Leaderboards = require(script.Parent.Leaderboards)
 local PlantLook = require(script.Parent.PlantLook)
+local Products = require(ReplicatedStorage.Shared.Garden.Products)
 local Trading = require(script.Parent.Trading)
 local Songs = require(ReplicatedStorage.Shared.Songs)
 local Rank = require(ReplicatedStorage.Shared.Rank)
@@ -78,6 +79,7 @@ type Session = {
 	store: PlayerStore.Session,
 	nodes: { [string]: Node }, -- plot key -> parts (all of Plots.Max, locked ones included)
 	hasPass: boolean, -- owns the Plot Pass game pass
+	hasDoubleGrowth: boolean, -- owns the Double Growth game pass
 	pending: Pending?,
 	nextAutoCare: number, -- unix seconds: when the equipped spirit tends next
 }
@@ -87,6 +89,11 @@ local updateEvent: RemoteEvent
 
 local function data(s: Session): PlayerData.Data
 	return s.store.data
+end
+
+-- The shop's personal restock shift: valid only while the shop slot it was bought in is still the current one.
+local function restockShift(d: PlayerData.Data, now: number): number
+	return if d.restockSlot == Shop.slotOf(now) then d.restockShift else 0
 end
 
 local function plotOf(s: Session, key: string): Growth.Plot?
@@ -118,8 +125,14 @@ local function seedOf(plot: Growth.Plot): Seeds.Seed
 	return Seeds.get(plot.seedId) :: Seeds.Seed -- sanitize() guarantees the seed exists
 end
 
-local function fractionOf(plot: Growth.Plot, now: number): number
-	return Growth.fraction(plot, seedOf(plot).growSeconds * (plot.growMult or 1), now)
+-- Seconds this plant needs: the seed's time, shortened by its mastery stars (fixed when planted) and by the
+-- Double Growth game pass.
+local function growSecondsOf(s: Session, plot: Growth.Plot): number
+	return seedOf(plot).growSeconds * (plot.growMult or 1) / (if s.hasDoubleGrowth then Products.GrowSpeedMult else 1)
+end
+
+local function fractionOf(s: Session, plot: Growth.Plot, now: number): number
+	return Growth.fraction(plot, growSecondsOf(s, plot), now)
 end
 
 local function equippedSpiritDef(s: Session): Spirits.Def?
@@ -137,12 +150,7 @@ end
 
 local function freshnessOf(s: Session, plot: Growth.Plot, now: number): number
 	local def = equippedSpiritDef(s)
-	return Growth.freshness(
-		plot,
-		seedOf(plot).growSeconds * (plot.growMult or 1),
-		now,
-		if def then def.freshMult else nil
-	)
+	return Growth.freshness(plot, growSecondsOf(s, plot), now, if def then def.freshMult else nil)
 end
 
 -- The mutation is rolled when the fruit ripens (spec), so it can be seen on the plant before it is harvested.
@@ -157,6 +165,7 @@ local function ensureRolled(s: Session, plot: Growth.Plot)
 		* (if spiritDef then spiritDef.mutationMult else 1)
 		* Progression.mutationMult(stars)
 		* Rush.boost(seedOf(plot).favoriteGenre, os.time())
+		* (if plot.sprinkled then Products.SprinklerBoost else 1)
 	plot.mutation = Mutations.roll(plot.bestPerfectStreak, chanceMult, math.random)
 	plot.rolled = true
 end
@@ -181,7 +190,7 @@ local function snapshot(s: Session): any
 	end
 	local plotInfo = {}
 	for key, plot in d.plots do
-		local fraction = fractionOf(plot, now)
+		local fraction = fractionOf(s, plot, now)
 		plotInfo[key] = { seedId = plot.seedId, fraction = fraction, stage = Growth.stageFor(fraction) }
 	end
 	return {
@@ -191,6 +200,11 @@ local function snapshot(s: Session): any
 		plots = plotInfo,
 		plotCount = d.plotCount,
 		hasPlotPass = s.hasPass,
+		hasDoubleGrowth = s.hasDoubleGrowth,
+		instantCredits = d.instantCredits,
+		restockSlot = d.restockSlot,
+		restockShift = d.restockShift,
+		sprinklerLeft = math.max(0, d.sprinklerUntil - now),
 		settings = { latencyMs = d.settings.latencyMs },
 		persistent = s.store.persistent,
 		tutorialStep = d.tutorialStep,
@@ -292,7 +306,7 @@ local function refreshPlot(s: Session, key: string, spiritKind: string?)
 		prompt.ActionText = "Plant"
 		return
 	end
-	local fraction = fractionOf(plot, os.time())
+	local fraction = fractionOf(s, plot, os.time())
 	local stage = Growth.stageFor(fraction)
 	if stage == "Fruit" then
 		ensureRolled(s, plot)
@@ -602,7 +616,7 @@ local function tendBegin(s: Session, payload: unknown): any
 		return fail("too far from the plant")
 	end
 	local now = os.time()
-	if Growth.stageFor(fractionOf(plot, now)) == "Fruit" then
+	if Growth.stageFor(fractionOf(s, plot, now)) == "Fruit" then
 		return fail("fully grown")
 	end
 	local wait = Growth.cooldownLeft(plot, now, COOLDOWN_SECONDS)
@@ -681,7 +695,7 @@ local function tendSubmit(s: Session, payload: unknown): any
 	refresh(s)
 	push(s)
 
-	local fraction = fractionOf(plot, now)
+	local fraction = fractionOf(s, plot, now)
 	print(`[Garden] {s.player.Name}: {pending.difficulty} acc {math.floor(tally.accuracy * 100)}% -> +{points} growth`)
 	return {
 		ok = true,
@@ -739,6 +753,7 @@ local function plant(s: Session, payload: unknown): any
 	end
 	d.plots[plotKey] =
 		Growth.newPlot(seedId, os.time(), Progression.growTimeMult(Progression.starsFor(d.mastery[seedId] or 0)))
+	d.plots[plotKey].sprinkled = d.sprinklerUntil > os.time()
 	advanceTutorial(s, "plant")
 	refresh(s)
 	push(s)
@@ -757,7 +772,7 @@ local function harvest(s: Session, payload: unknown): any
 	if distanceToPlot(s, plotKey) > TEND_RANGE then
 		return fail("too far from the plant")
 	end
-	if Growth.stageFor(fractionOf(plot, os.time())) ~= "Fruit" then
+	if Growth.stageFor(fractionOf(s, plot, os.time())) ~= "Fruit" then
 		return fail("not ready yet")
 	end
 	local d = data(s)
@@ -836,7 +851,14 @@ local function buy(s: Session, payload: unknown): any
 	if not seed then
 		return fail("unknown seed")
 	end
-	if not Shop.inStock(seed.seedId, os.time(), Progression.levelFor(data(s).xp).level) then
+	if
+		not Shop.inStock(
+			seed.seedId,
+			os.time(),
+			Progression.levelFor(data(s).xp).level,
+			restockShift(data(s), os.time())
+		)
+	then
 		return fail("not in stock right now")
 	end
 	local d = data(s)
@@ -941,7 +963,7 @@ local function autoCare(s: Session, now: number)
 	s.nextAutoCare = now + def.autoCareSeconds
 	local cared = false
 	for _, plot in data(s).plots do
-		if Growth.stageFor(fractionOf(plot, now)) ~= "Fruit" then
+		if Growth.stageFor(fractionOf(s, plot, now)) ~= "Fruit" then
 			plot.careGauge += def.autoCarePoints
 			cared = true
 		end
@@ -992,8 +1014,8 @@ local function devGrow(s: Session): any
 	local now = os.time()
 	local grown = 0
 	for _, plot in d.plots do
-		local total = seedOf(plot).growSeconds * (plot.growMult or 1)
-		local fraction = fractionOf(plot, now)
+		local total = growSecondsOf(s, plot)
+		local fraction = fractionOf(s, plot, now)
 		for _, stage in Growth.Stages do
 			if stage.from > fraction + 1e-6 then
 				plot.careGauge += stage.from * total - Growth.progressSeconds(plot, total, now) + 1
@@ -1005,6 +1027,74 @@ local function devGrow(s: Session): any
 	refresh(s)
 	push(s)
 	return { ok = grown > 0, reason = if grown == 0 then "nothing to grow" else nil, grown = grown }
+end
+
+-- Uses one paid Instant Grow on a plant: it ripens at once.
+local function useInstantGrow(s: Session, payload: unknown): any
+	local plotKey = ownedKey(s, payload)
+	if not plotKey then
+		return fail("unknown plot")
+	end
+	local plot = plotOf(s, plotKey)
+	if not plot then
+		return fail("nothing planted")
+	end
+	local d = data(s)
+	if d.instantCredits < 1 then
+		return fail("no Instant Grow to use")
+	end
+	if Growth.stageFor(fractionOf(s, plot, os.time())) == "Fruit" then
+		return fail("already ripe")
+	end
+	d.instantCredits -= 1
+	plot.careGauge = math.max(plot.careGauge, growSecondsOf(s, plot))
+	refresh(s)
+	push(s)
+	print(`[Garden] {s.player.Name}: Instant Grow on plot {plotKey}`)
+	return { ok = true }
+end
+
+-- Robux purchases (developer products). Roblox may call this again for the same purchase, so every purchase id is
+-- remembered in the player's data and granted once. The data is saved before the purchase is confirmed.
+local function processReceipt(info: { [string]: any }): Enum.ProductPurchaseDecision
+	local player = Players:GetPlayerByUserId(info.PlayerId)
+	local s = if player then sessions[player] else nil
+	if not s then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local d = data(s)
+	local receiptId = tostring(info.PurchaseId)
+	if table.find(d.receipts, receiptId) then
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+	local kind = Products.kindOf(info.ProductId)
+	if not kind then
+		warn(`[Garden] receipt for an unknown product {info.ProductId}`)
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local now = os.time()
+	if kind == "InstantGrow" then
+		d.instantCredits += 1
+	elseif kind == "Restock" then
+		d.restockShift = restockShift(d, now) + 1
+		d.restockSlot = Shop.slotOf(now)
+	elseif kind == "Sprinkler" then
+		d.sprinklerUntil = now + Products.SprinklerSeconds
+		for _, plot in d.plots do
+			plot.sprinkled = true
+		end
+	end
+	table.insert(d.receipts, receiptId)
+	while #d.receipts > Products.MaxReceipts do
+		table.remove(d.receipts, 1)
+	end
+	refresh(s)
+	push(s)
+	print(`[Garden] {s.player.Name}: bought {kind}`)
+	if s.store.persistent and not PlayerStore.save(s.store, false) then
+		return Enum.ProductPurchaseDecision.NotProcessedYet -- saved next time; the receipt id above stops a double grant
+	end
+	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
 -- Studio only: jumps to the next garden level so the unlocked seeds can be tried.
@@ -1063,6 +1153,7 @@ local function createSession(player: Player, container: Instance): Session?
 		store = store,
 		nodes = nodes,
 		hasPass = false,
+		hasDoubleGrowth = false,
 		pending = nil,
 		nextAutoCare = 0,
 	}
@@ -1086,6 +1177,12 @@ local function createSession(player: Player, container: Instance): Session?
 		end)
 		s.hasPass = ok and owns == true
 		print(`[Garden] {player.Name}: Plot Pass owned = {s.hasPass}`)
+	end
+	if Products.DoubleGrowthPassId > 0 then
+		local ok, owns = pcall(function()
+			return MarketplaceService:UserOwnsGamePassAsync(player.UserId, Products.DoubleGrowthPassId)
+		end)
+		s.hasDoubleGrowth = ok and owns == true
 	end
 	refresh(s)
 	push(s)
@@ -1171,6 +1268,8 @@ function Garden.start()
 			return skipTutorial(s)
 		elseif action == "devReset" then
 			return devReset(s)
+		elseif action == "useInstantGrow" then
+			return useInstantGrow(s, payload)
 		elseif action == "leaderboard" then
 			return { ok = true, boards = Leaderboards.snapshot() }
 		elseif action == "devGrow" then
@@ -1185,10 +1284,18 @@ function Garden.start()
 		return nil
 	end
 
-	-- A Plot Pass bought in the game takes effect at once.
+	MarketplaceService.ProcessReceipt = processReceipt
+
+	-- Game passes bought in the game take effect at once.
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(
 		function(player: Player, passId: number, purchased: boolean)
 			local s = sessions[player]
+			if s and purchased and Products.DoubleGrowthPassId > 0 and passId == Products.DoubleGrowthPassId then
+				s.hasDoubleGrowth = true
+				print(`[Garden] {player.Name}: bought Double Growth`)
+				refresh(s)
+				push(s)
+			end
 			if s and purchased and Plots.PassId > 0 and passId == Plots.PassId then
 				s.hasPass = true
 				print(`[Garden] {player.Name}: bought the Plot Pass`)

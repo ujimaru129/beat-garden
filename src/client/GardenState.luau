@@ -27,6 +27,11 @@ export type Snapshot = {
 	equippedSpirit: string?,
 	collection: { [string]: boolean },
 	sellMult: number, -- the equipped spirit's bonus on selling
+	hasDoubleGrowth: boolean,
+	instantCredits: number,
+	restockSlot: number, -- the personal restock below is only valid in this shop slot
+	restockShift: number,
+	sprinklerLeft: number, -- seconds the Look Sprinkler still works for new plants
 	xp: number,
 	level: Progression.LevelInfo,
 	mastery: { [string]: number }, -- seedId -> harvests

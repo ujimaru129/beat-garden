@@ -74,7 +74,7 @@ function LeaderboardUI.start()
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 30
 	UiTheme.hideDuringRun(gui)
-	local button = MarketUI.makeHudButton(gui, "Ranking", 284)
+	local button = MarketUI.makeHudButton(gui, "Ranking", 214)
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	button.Activated:Connect(function()

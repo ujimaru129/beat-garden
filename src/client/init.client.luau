@@ -55,12 +55,12 @@ calGui.ResetOnSpawn = false
 calGui.DisplayOrder = 30
 local calButton = Instance.new("TextButton")
 calButton.AnchorPoint = Vector2.new(1, 0)
-calButton.Position = UDim2.new(1, -16, 0, 16)
-calButton.Size = UDim2.fromOffset(120, 48)
+calButton.Position = UDim2.new(1, -12, 0, 10)
+calButton.Size = UDim2.fromOffset(104, 36)
 calButton.TextScaled = true
 calButton.Text = "Calibrate"
 local calLimit = Instance.new("UITextSizeConstraint")
-calLimit.MaxTextSize = 24
+calLimit.MaxTextSize = 18
 calLimit.Parent = calButton
 calButton.Parent = calGui
 UiTheme.watch(function()

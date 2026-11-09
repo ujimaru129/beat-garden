@@ -115,7 +115,7 @@ function SpiritUI.start()
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 30
 	UiTheme.hideDuringRun(gui)
-	local button = MarketUI.makeHudButton(gui, "Spirits", 172)
+	local button = MarketUI.makeHudButton(gui, "Spirits", 134)
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	button.Activated:Connect(function()

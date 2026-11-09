@@ -4,6 +4,7 @@
 -- only from the Market NPC, and the server only lets you sell near it. The server decides every
 -- price and result.
 
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,6 +16,7 @@ local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Progression = require(ReplicatedStorage.Shared.Garden.Progression)
+local Products = require(ReplicatedStorage.Shared.Garden.Products)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Shop = require(ReplicatedStorage.Shared.Garden.Shop)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
@@ -23,6 +25,13 @@ local UiTheme = require(script.Parent.UiTheme)
 local Tutorial = require(ReplicatedStorage.Shared.Garden.Tutorial)
 
 local MarketUI = {}
+
+-- The shop's stock for a snapshot: the shared stock of the current slot, or the personal restock if it is still valid.
+local function stockFor(snapshot: GardenState.Snapshot): { string }
+	local slot = Shop.slotOf(math.floor(Workspace:GetServerTimeNow()))
+	local shift = if snapshot.restockSlot == slot then snapshot.restockShift else 0
+	return Shop.stock(slot, snapshot.level.level, shift)
+end
 
 local function seedName(seedId: string): string
 	local seed = Seeds.get(seedId)
@@ -47,12 +56,12 @@ end
 local function shopRows(
 	snapshot: GardenState.Snapshot,
 	buy: (seedId: string) -> (),
-	buyEgg: () -> ()
+	buyEgg: () -> (),
+	purchase: (what: string) -> ()
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
 	-- The stock changes every few minutes; it is worked out from the server clock, like on the server.
-	local stock = Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())), snapshot.level.level)
-	for _, seedId in stock do
+	for _, seedId in stockFor(snapshot) do
 		local seed = Seeds.get(seedId) :: Seeds.Seed
 		local own = snapshot.seeds[seed.seedId] or 0
 		local genre = (Genres.Names :: any)[seed.favoriteGenre]
@@ -94,6 +103,33 @@ local function shopRows(
 		then `  -  {nextSeed.name.en} opens at Lv {Progression.unlockLevelOf(nextSeed.seedId)}`
 		else "  -  every seed is open"
 	table.insert(rows, { note = true, text = progressText .. nextText })
+
+	-- Robux items, last and quiet: nothing here is needed to play.
+	table.insert(rows, { note = true, text = "Extras (Robux): save time or add a little luck" })
+	local function extra(text: string, what: string)
+		table.insert(rows, {
+			text = text,
+			onTap = function()
+				purchase(what)
+			end,
+		})
+	end
+	extra(`Restock the shop for you  {Products.Prices.Restock} R$`, "Restock")
+	extra(`Look Sprinkler  {Products.Prices.Sprinkler} R$  (mutations x{Products.SprinklerBoost})`, "Sprinkler")
+	extra(
+		if snapshot.instantCredits > 0
+			then `Use Instant Grow  (you have {snapshot.instantCredits})`
+			else `Instant Grow  {Products.Prices.InstantGrow} R$  (ripens the plant you tended last)`,
+		"InstantGrow"
+	)
+	if snapshot.hasDoubleGrowth then
+		table.insert(rows, { text = "Double Growth: yours! Plants grow twice as fast" })
+	else
+		extra(
+			`Double Growth pass  {Products.Prices.DoubleGrowth} R$  (plants grow x{Products.GrowSpeedMult}, forever)`,
+			"DoubleGrowth"
+		)
+	end
 	return rows
 end
 
@@ -134,13 +170,13 @@ end
 local function makeHudButton(gui: ScreenGui, text: string, y: number): TextButton
 	local button = Instance.new("TextButton")
 	button.AnchorPoint = Vector2.new(1, 0)
-	button.Position = UDim2.new(1, -16, 0, y)
-	button.Size = UDim2.fromOffset(120, 48)
+	button.Position = UDim2.new(1, -12, 0, y)
+	button.Size = UDim2.fromOffset(104, 36)
 	button.TextScaled = true
 	button.Text = text
 	button.Parent = gui
 	local limit = Instance.new("UITextSizeConstraint")
-	limit.MaxTextSize = 24
+	limit.MaxTextSize = 18
 	limit.Parent = button
 	UiTheme.watch(function()
 		UiTheme.styleButton(button, UiTheme.get(), "Sora", 12)
@@ -170,6 +206,48 @@ function MarketUI.start()
 		reportResult(result, `Bought a Spirit Egg for {result.price}. Hatch it in Spirits`)
 	end
 
+	-- Robux items. A developer product is bought through Roblox's own purchase window; the server grants it (see
+	-- Garden.processReceipt). An Instant Grow is used on the plant the player tended last, as soon as it is paid.
+	local waitingInstant = false
+	local function useInstantGrow()
+		local plotKey = tostring(player:GetAttribute("LastPlotKey") or "1")
+		local result = GardenState.call("useInstantGrow", plotKey)
+		reportResult(result, "Instant Grow! The plant is ripe")
+	end
+	local function purchase(what: string)
+		if what == "InstantGrow" then
+			local snapshot = GardenState.get()
+			if snapshot and snapshot.instantCredits > 0 then
+				useInstantGrow()
+				return
+			end
+		end
+		local id = if what == "Restock"
+			then Products.RestockId
+			elseif what == "Sprinkler" then Products.SprinklerId
+			elseif what == "InstantGrow" then Products.InstantGrowId
+			else Products.DoubleGrowthPassId
+		if id <= 0 then
+			Toast.show("Coming soon!")
+			return
+		end
+		if what == "DoubleGrowth" then
+			MarketplaceService:PromptGamePassPurchase(player, id)
+		else
+			waitingInstant = what == "InstantGrow"
+			MarketplaceService:PromptProductPurchase(player, id)
+		end
+	end
+	local lastCredits = 0
+	GardenState.onChanged(function(snapshot)
+		-- a paid Instant Grow arrives as a credit: use it right away
+		if waitingInstant and snapshot.instantCredits > lastCredits then
+			waitingInstant = false
+			useInstantGrow()
+		end
+		lastCredits = snapshot.instantCredits
+	end)
+
 	-- The world prompts sit over the modals, so they are off while a modal is open.
 	local function onClose()
 		ProximityPromptService.Enabled = true
@@ -184,9 +262,8 @@ function MarketUI.start()
 	local shownStock = ""
 	local function rebuildShop(snapshot: GardenState.Snapshot)
 		shop.setTitle(shopTitle(snapshot))
-		shownStock =
-			table.concat(Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())), snapshot.level.level), ",")
-		shop.setRows(shopRows(snapshot, buy, buyEgg))
+		shownStock = table.concat(stockFor(snapshot), ",")
+		shop.setRows(shopRows(snapshot, buy, buyEgg, purchase))
 	end
 	-- While the shop is open the countdown ticks, and the rows are rebuilt when the stock changes.
 	task.spawn(function()
@@ -194,8 +271,7 @@ function MarketUI.start()
 			task.wait(1)
 			local snapshot = GardenState.get()
 			if snapshot and shop.isOpen() then
-				local now = Shop.stock(Shop.slotOf(math.floor(Workspace:GetServerTimeNow())), snapshot.level.level)
-				if table.concat(now, ",") ~= shownStock then
+				if table.concat(stockFor(snapshot), ",") ~= shownStock then
 					rebuildShop(snapshot)
 				else
 					shop.setTitle(shopTitle(snapshot))
@@ -227,8 +303,8 @@ function MarketUI.start()
 
 	local coins = Instance.new("TextLabel")
 	coins.AnchorPoint = Vector2.new(1, 0)
-	coins.Position = UDim2.new(1, -16, 0, 72)
-	coins.Size = UDim2.fromOffset(170, 42)
+	coins.Position = UDim2.new(1, -12, 0, 52)
+	coins.Size = UDim2.fromOffset(150, 38)
 	coins.TextScaled = true
 	coins.Text = "Coins: 0"
 	coins.Parent = gui
@@ -255,10 +331,10 @@ function MarketUI.start()
 	end
 	local coinsPad = Instance.new("UIPadding")
 	coinsPad.PaddingTop = UDim.new(0, 1)
-	coinsPad.PaddingBottom = UDim.new(0, 13)
+	coinsPad.PaddingBottom = UDim.new(0, 11)
 	coinsPad.Parent = coins
 	local coinsLimit = Instance.new("UITextSizeConstraint")
-	coinsLimit.MaxTextSize = 20
+	coinsLimit.MaxTextSize = 16
 	coinsLimit.Parent = coins
 	UiTheme.watch(function()
 		local theme = UiTheme.get()
@@ -271,7 +347,7 @@ function MarketUI.start()
 	end)
 
 	UiTheme.hideDuringRun(gui)
-	local shopButton = makeHudButton(gui, "Shop", 116)
+	local shopButton = makeHudButton(gui, "Shop", 94)
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	-- The tutorial step that asks for a purchase lights up the Shop button (the one accent colour).

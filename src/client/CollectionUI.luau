@@ -54,7 +54,7 @@ function CollectionUI.start()
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 30
 	UiTheme.hideDuringRun(gui)
-	local button = MarketUI.makeHudButton(gui, "Book", 228)
+	local button = MarketUI.makeHudButton(gui, "Book", 174)
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	local function rebuild(snapshot: GardenState.Snapshot)

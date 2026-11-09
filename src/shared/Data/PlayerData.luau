@@ -7,6 +7,7 @@ local Collection = require(script.Parent.Parent.Garden.Collection)
 local Growth = require(script.Parent.Parent.Garden.Growth)
 local Mutations = require(script.Parent.Parent.Garden.Mutations)
 local Plots = require(script.Parent.Parent.Garden.Plots)
+local Products = require(script.Parent.Parent.Garden.Products)
 local Seeds = require(script.Parent.Parent.Garden.Seeds)
 local Spirits = require(script.Parent.Parent.Garden.Spirits)
 local Tutorial = require(script.Parent.Parent.Garden.Tutorial)
@@ -37,6 +38,11 @@ export type Data = {
 	collection: Collection.Book, -- discovered seed x variant entries (Garden/Collection)
 	xp: number, -- garden XP (Garden/Progression)
 	mastery: { [string]: number }, -- seedId -> harvests of that seed
+	receipts: { string }, -- recent Robux purchase ids already granted (never grant one twice)
+	instantCredits: number, -- paid Instant Grows not used yet
+	sprinklerUntil: number, -- unix seconds: new plants get the Look Sprinkler until then
+	restockSlot: number, -- shop slot the personal restock below belongs to
+	restockShift: number, -- personal restock (Garden/Shop `shift`); only valid inside restockSlot
 	tutorialStep: number, -- 1..5 = in the tutorial, Tutorial.Done = finished or skipped
 }
 
@@ -69,6 +75,11 @@ function PlayerData.new(): Data
 		collection = {},
 		xp = 0,
 		mastery = {},
+		receipts = {},
+		instantCredits = 0,
+		sprinklerUntil = 0,
+		restockSlot = 0,
+		restockShift = 0,
 		tutorialStep = 1,
 	}
 end
@@ -85,6 +96,7 @@ local function sanitizePlot(raw: any): Growth.Plot?
 		bestPerfectStreak = num(raw.bestPerfectStreak, 0, 0),
 		mutationMult = num(raw.mutationMult, 1, 1),
 		rolled = raw.rolled == true,
+		sprinkled = raw.sprinkled == true,
 		mutation = if raw.rolled == true
 				and type(raw.mutation) == "string"
 				and Mutations.isMutation(raw.mutation)
@@ -199,6 +211,18 @@ function PlayerData.sanitize(raw: any): Data
 			end
 		end
 	end
+
+	if type(raw.receipts) == "table" then
+		for _, id in raw.receipts do
+			if type(id) == "string" and #id <= 64 and #data.receipts < Products.MaxReceipts then
+				table.insert(data.receipts, id)
+			end
+		end
+	end
+	data.instantCredits = math.floor(num(raw.instantCredits, 0, 0, 999))
+	data.sprinklerUntil = num(raw.sprinklerUntil, 0, 0)
+	data.restockSlot = math.floor(num(raw.restockSlot, 0, 0))
+	data.restockShift = math.floor(num(raw.restockShift, 0, 0, 1e6))
 
 	-- Data saved before the tutorial existed: anyone who already has progress skips it.
 	local hasProgress = next(data.plots) ~= nil or data.coins > 0 or data.stats.harvests > 0

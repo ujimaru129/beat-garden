@@ -66,6 +66,13 @@ local function laneColor(lane: number): Color3
 	return Palette.hue(Palette.LaneOrder[lane + 1], "Night")
 end
 
+-- By day every lane has the same look: a pale floor and a deep, saturated note (the same value for all four hues,
+-- so no note is lighter against its lane than another).
+local function DEEP(color: Color3): Color3
+	local h = color:ToHSV()
+	return Color3.fromHSV(h, 0.92, 0.6)
+end
+
 local function laneShape(lane: number): string
 	return Palette.LaneShapes[lane + 1]
 end
@@ -108,9 +115,7 @@ local function makeNotePart(lane: number, parent: Instance): BasePart
 	local day = not UiTheme.get().night
 	-- The notes are plain (not glowing) so their outline stays crisp: by day deep and saturated against the
 	-- pastel floor, by night bright and saturated (the scene is evenly lit during a run, see Atmosphere).
-	local color = if day
-		then laneColor(lane):Lerp(Color3.new(0, 0, 0), 0.38)
-		else laneColor(lane):Lerp(Color3.new(1, 1, 1), 0.15)
+	local color = if day then DEEP(laneColor(lane)) else laneColor(lane):Lerp(Color3.new(1, 1, 1), 0.15)
 	local shape = laneShape(lane)
 	local props = solidProps(color)
 	props.Material = Enum.Material.SmoothPlastic
@@ -224,7 +229,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		-- slices that get more see-through towards the far end, so the lane fades away into the distance.
 		local hueName = Palette.LaneOrder[lane + 1]
 		local floorColor = if dayLook
-			then Palette.hue(hueName, "Day"):Lerp(Palette.hue(hueName, "Night"), 0.55):Lerp(Color3.new(0, 0, 0), 0.2)
+			then Palette.hue(hueName, "Day"):Lerp(Palette.hue(hueName, "Night"), 0.32)
 			else color:Lerp(Color3.new(0, 0, 0), 0.8)
 		local slices = 8
 		local sliceLength = (LANE_LENGTH + 6) / slices
@@ -532,12 +537,32 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			table.insert(hidden, inst)
 		end
 	end
+	-- Anything standing in the lane corridor (a plant, a prop) is hidden too, whatever it is: it would block the notes.
+	-- Big things (the ground) and flat things (floor tiles) stay.
+	local corridorParams = OverlapParams.new()
+	corridorParams.FilterType = Enum.RaycastFilterType.Exclude
+	corridorParams.FilterDescendantsInstances = if character then { folder, character } else { folder }
+	local function hideCorridor()
+		local width = LANE_WIDTH * 4 + 10
+		local box = origin * CFrame.new(0, 9, -LANE_LENGTH / 2 + 10)
+		for _, part in Workspace:GetPartBoundsInBox(box, Vector3.new(width, 18, LANE_LENGTH + 30), corridorParams) do
+			local size = part.Size
+			if previous[part] == nil and size.Y > 1.5 and math.max(size.X, size.Z) < 40 then
+				hideWorld(part)
+			end
+		end
+	end
+	hideCorridor()
+
+	-- Parts that appear during the run (a plant that grows a stage, a spirit) are hidden too.
+	local worldConns: { RBXScriptConnection } = {}
 	for _, rootName in { "Garden", "PlotVisuals" } do
 		local root = Workspace:FindFirstChild(rootName)
 		if root then
 			for _, d in root:GetDescendants() do
 				hideWorld(d)
 			end
+			table.insert(worldConns, root.DescendantAdded:Connect(hideWorld))
 		end
 	end
 
@@ -731,6 +756,9 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end
 		renderConn:Disconnect()
 		inputConn:Disconnect()
+		for _, conn in worldConns do
+			conn:Disconnect()
+		end
 		if camera then
 			camera.CameraType = savedCameraType or Enum.CameraType.Custom
 			if savedCameraCFrame then
@@ -754,8 +782,13 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end
 	end
 
+	local nextCorridorScan = 0
 	renderConn = RunService.RenderStepped:Connect(function()
 		local now = getSongTimeMs()
+		if os.clock() >= nextCorridorScan then
+			nextCorridorScan = os.clock() + 0.5
+			hideCorridor()
+		end
 
 		if #tiles > 0 then
 			local beatLength = 60000 / (options.bpm or 120)

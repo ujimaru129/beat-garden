@@ -24,7 +24,8 @@ Palette.Base = {
 }
 
 -- Rhythm lanes, left to right. Pair with distinct note shapes, never color alone.
-Palette.LaneOrder = { "Sakura", "Sora", "Matcha", "Yuzu" }
+-- Sky blue and mint look alike, so they are never next to each other: pink, blue, yellow, mint.
+Palette.LaneOrder = { "Sakura", "Sora", "Yuzu", "Matcha" }
 Palette.LaneShapes = { "Circle", "Triangle", "Square", "Diamond" }
 
 Palette.Rarity = {
