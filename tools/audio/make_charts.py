@@ -42,10 +42,10 @@ GENRES = {
     "blue_samurai": "Japan",
     "shinjuku_deep_romance": "Pop",
 }
-OFFSETS_MS = {"pastel_trip": -25}
+OFFSETS_MS = {"pastel_trip": -25, "naniwa_march": -40}
 # The beat tracker sometimes locks onto the off-beat. A fraction of a beat to move the tracked beats later, found by
 # looking at where the kick drum lands in the grid (0.5 = the kick sits half a beat after the tracked beat).
-BEAT_PHASE = {"blue_samurai": 0.53}
+BEAT_PHASE = {"blue_samurai": 0.53, "naniwa_march": 0.45}
 ASSET_IDS = {
     "kabuki_dance": "102174208355987",
     "dard_aur_dhamaka": "76576411777923",
