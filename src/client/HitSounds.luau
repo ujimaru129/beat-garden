@@ -10,7 +10,7 @@ local HitSounds = {}
 local ASSET: string? = "rbxassetid://138623766818077"
 
 local FALLBACK = "rbxasset://sounds/clickfast.wav"
-local VOLUME = if ASSET then 0.3 else 0.2
+local VOLUME = if ASSET then 0.2 else 0.15
 local VOICES = 4 -- taps can come fast, so a few copies take turns instead of cutting each other off
 
 export type Player = {
