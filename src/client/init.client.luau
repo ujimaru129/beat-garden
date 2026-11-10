@@ -9,11 +9,13 @@ local UserInputService = game:GetService("UserInputService")
 
 local Atmosphere = require(script.Atmosphere)
 local Calibrator = require(script.Calibrator)
+local Lang = require(script.Lang)
 local CollectionUI = require(script.CollectionUI)
 local GardenState = require(script.GardenState)
 local LeaderboardUI = require(script.LeaderboardUI)
 local MarketUI = require(script.MarketUI)
 local PlotVisuals = require(script.PlotVisuals)
+local PromptText = require(script.PromptText)
 local PromptFilter = require(script.PromptFilter)
 local RushBanner = require(script.RushBanner)
 local SpiritUI = require(script.SpiritUI)
@@ -39,6 +41,7 @@ Atmosphere.start()
 PlotVisuals.start()
 task.spawn(WorldFx.start) -- waits for the island to arrive
 PromptFilter.start()
+PromptText.start()
 MarketUI.start()
 SpiritUI.start()
 CollectionUI.start()
@@ -64,7 +67,7 @@ calButton.AnchorPoint = Vector2.new(1, 0)
 calButton.Position = UDim2.new(1, -12, 0, 10)
 calButton.Size = UDim2.fromOffset(104, 36)
 calButton.TextScaled = true
-calButton.Text = "Calibrate"
+calButton.Text = Lang.t("Calibrate")
 local calLimit = Instance.new("UITextSizeConstraint")
 calLimit.MaxTextSize = 18
 calLimit.Parent = calButton

@@ -16,6 +16,7 @@ local Palette = require(ReplicatedStorage.Shared.Palette)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local HitSounds = require(script.Parent.HitSounds)
 local RhythmOverlay = require(script.Parent.RhythmOverlay)
+local Lang = require(script.Parent.Lang)
 local UiTheme = require(script.Parent.UiTheme)
 
 local RhythmLane3D = {}
@@ -421,7 +422,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -24, 0, 14),
 		BackgroundTransparency = 1,
-		Text = "SCORE",
+		Text = Lang.t("SCORE"),
 		TextScaled = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, scorePanel) :: TextLabel
@@ -637,7 +638,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end
 		offsetLabel.Text = if result.judgement == "Miss"
 			then ""
-			else (if result.offsetMs > 0 then `+{result.offsetMs}ms late` else `{result.offsetMs}ms early`)
+			else Lang.t(if result.offsetMs > 0 then `+{result.offsetMs}ms late` else `{result.offsetMs}ms early`)
 		if result.judgement ~= "Miss" then
 			pads[result.lane + 1].Transparency = if result.judgement == "Perfect" then 0.2 else 0.5
 		end

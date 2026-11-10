@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
+local Lang = require(script.Parent.Lang)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 
@@ -346,7 +347,7 @@ function RhythmOverlay.play(segment: RhythmEngine.Segment, options: Options): ()
 		comboLabel.Text = if result.combo >= 2 then `{result.combo} combo` else ""
 		offsetLabel.Text = if result.judgement == "Miss"
 			then ""
-			else (if result.offsetMs > 0 then `+{result.offsetMs}ms late` else `{result.offsetMs}ms early`)
+			else Lang.t(if result.offsetMs > 0 then `+{result.offsetMs}ms late` else `{result.offsetMs}ms early`)
 		if result.judgement ~= "Miss" then
 			local flash = flashes[result.lane + 1]
 			flash.BackgroundTransparency = if result.judgement == "Perfect" then 0.35 else 0.6

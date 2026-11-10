@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
+local Lang = require(script.Parent.Lang)
 local UiTheme = require(script.Parent.UiTheme)
 
 local DifficultyPicker = {}
@@ -73,7 +74,7 @@ function DifficultyPicker.create(onPick: (name: string) -> (), onCancel: (() -> 
 			AnchorPoint = Vector2.new(0.5, 1),
 			Position = UDim2.new(0.5, 0, 1, -106),
 			Size = UDim2.fromOffset(110, 40),
-			Text = "Cancel",
+			Text = Lang.t("Cancel"),
 			TextScaled = true,
 		}, gui) :: TextButton
 		make("UITextSizeConstraint", { MaxTextSize = 24 }, cancel)

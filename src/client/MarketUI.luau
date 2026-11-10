@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local GardenState = require(script.Parent.GardenState)
+local Lang = require(script.Parent.Lang)
 local ListModal = require(script.Parent.ListModal)
 local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
@@ -102,7 +103,7 @@ local function shopRows(
 	local nextText = if nextSeed
 		then `  -  {nextSeed.name.en} opens at Lv {Progression.unlockLevelOf(nextSeed.seedId)}`
 		else "  -  every seed is open"
-	table.insert(rows, { note = true, text = progressText .. nextText })
+	table.insert(rows, { note = true, text = Lang.t(progressText) .. Lang.t(nextText) })
 
 	-- Robux items, last and quiet: nothing here is needed to play.
 	table.insert(rows, { note = true, text = "Extras (Robux): save time or add a little luck" })
@@ -115,10 +116,13 @@ local function shopRows(
 		})
 	end
 	extra(`Restock the shop for you  {Products.Prices.Restock} R$`, "Restock")
-	local sprinklerText =
+	local sprinklerText = Lang.t(
 		`Growth Sprinkler  {Products.Prices.Sprinkler} R$  (all plants grow x{1 + Products.SprinklerGrowBonus} for {Products.SprinklerSeconds // 60} min)`
+	)
 	if snapshot.sprinklerLeft > 0 then
-		sprinklerText ..= `  -  on: {snapshot.sprinklerLeft // 60}:{string.format("%02d", snapshot.sprinklerLeft % 60)} left`
+		sprinklerText ..= Lang.t(
+			`  -  on: {snapshot.sprinklerLeft // 60}:{string.format("%02d", snapshot.sprinklerLeft % 60)} left`
+		)
 	end
 	extra(sprinklerText, "Sprinkler")
 	extra(
@@ -178,7 +182,7 @@ local function makeHudButton(gui: ScreenGui, text: string, y: number): TextButto
 	button.Position = UDim2.new(1, -12, 0, y)
 	button.Size = UDim2.fromOffset(104, 36)
 	button.TextScaled = true
-	button.Text = text
+	button.Text = Lang.t(text)
 	button.Parent = gui
 	local limit = Instance.new("UITextSizeConstraint")
 	limit.MaxTextSize = 18

@@ -11,6 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Calibration = require(ReplicatedStorage.Shared.RhythmEngine).Calibration
 local Palette = require(ReplicatedStorage.Shared.Palette)
+local Lang = require(script.Parent.Lang)
 local RhythmOverlay = require(script.Parent.RhythmOverlay)
 
 local Calibrator = {}
@@ -175,11 +176,11 @@ function Calibrator.create(onSaved: ((latencyMs: number) -> ())?): Calibrator
 		saveButton.Visible = recommended ~= nil
 		saveButton.Size = if recommended then UDim2.new(0.5, -6, 1, 0) else UDim2.fromScale(0, 1)
 		if recommended then
-			title.Text = `Delay: {recommended} ms`
-			hint.Text = `{#offsets} taps measured`
+			title.Text = Lang.t(`Delay: {recommended} ms`)
+			hint.Text = Lang.t(`{#offsets} taps measured`)
 		else
-			title.Text = "Not enough taps"
-			hint.Text = `{#offsets} of {MEASURED_BEATS} taps counted - tap with every click`
+			title.Text = Lang.t("Not enough taps")
+			hint.Text = Lang.t(`{#offsets} of {MEASURED_BEATS} taps counted - tap with every click`)
 		end
 	end
 
@@ -189,8 +190,8 @@ function Calibrator.create(onSaved: ((latencyMs: number) -> ())?): Calibrator
 		disconnect()
 		recommended = nil
 		buttons.Visible = false
-		title.Text = "Tap with the click"
-		hint.Text = "Tap anywhere, in time with the beat"
+		title.Text = Lang.t("Tap with the click")
+		hint.Text = Lang.t("Tap anywhere, in time with the beat")
 
 		local startClock = os.clock()
 		local taps: { number } = {}
@@ -241,7 +242,7 @@ function Calibrator.create(onSaved: ((latencyMs: number) -> ())?): Calibrator
 			ring.BackgroundTransparency = math.min(0.6, ring.BackgroundTransparency + 0.03)
 
 			if beat < COUNT_IN_BEATS then
-				hint.Text = `Get ready... {COUNT_IN_BEATS - beat}`
+				hint.Text = Lang.t(`Get ready... {COUNT_IN_BEATS - beat}`)
 			else
 				hint.Text = `{math.min(beat - COUNT_IN_BEATS + 1, MEASURED_BEATS)} / {MEASURED_BEATS}`
 			end

@@ -9,6 +9,7 @@ local TextService = game:GetService("TextService")
 local UserInputService = game:GetService("UserInputService")
 
 local ScrollThumb = require(script.Parent.ScrollThumb)
+local Lang = require(script.Parent.Lang)
 local UiTheme = require(script.Parent.UiTheme)
 
 local ListModal = {}
@@ -29,6 +30,10 @@ export type Modal = {
 }
 
 local ROW_HEIGHT = 52
+local NOTE_MIN_HEIGHT = 34
+local MAX_TEXT = 26
+local MIN_TEXT = 18 -- smaller than this is hard to read on a phone: longer rows wrap instead
+local NOTE_TEXT = 17
 
 local function make(className: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(className)
@@ -70,7 +75,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 		Position = UDim2.fromOffset(16, 8),
 		Size = UDim2.new(1, -80, 0, 44),
 		BackgroundTransparency = 1,
-		Text = title,
+		Text = Lang.t(title),
 		TextScaled = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, panel) :: TextLabel
@@ -177,18 +182,19 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 
 	local modal: Modal
 
-	-- All rows share one text size: the biggest size at which the longest row still fits on one line.
+	-- All rows share one text size: the biggest size at which the longest row still fits on one line, but never
+	-- smaller than MIN_TEXT. A row that is still too long wraps onto a second line and its row grows to fit.
 	-- (TextScaled would give every row its own size, so a short name would look bigger than a long one.)
 	local rowButtons: { { button: TextButton, text: string, note: boolean } } = {}
 	local function applyTextSize()
 		local width = (if list.AbsoluteSize.X > 40 then list.AbsoluteSize.X else 480) - 8 - 28 - 12
-		local best = 26
+		local best = MAX_TEXT
 		for _, row in rowButtons do
 			if row.note then
 				continue
 			end
 			local size = best
-			while size > 12 do
+			while size > MIN_TEXT do
 				local bounds = TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(width, math.huge))
 				if bounds.Y <= size * 1.4 then
 					break
@@ -198,12 +204,14 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			best = math.min(best, size)
 		end
 		for _, row in rowButtons do
-			if row.note then
-				row.button.TextScaled = true
-			else
-				row.button.TextScaled = false
-				row.button.TextSize = best
-			end
+			local size = if row.note then NOTE_TEXT else best
+			row.button.TextScaled = false
+			row.button.TextWrapped = true
+			row.button.TextSize = size
+			-- The text area is the row minus the padding above and below (22% each).
+			local bounds = TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(width, math.huge))
+			local height = math.ceil(bounds.Y / 0.56)
+			row.button.Size = UDim2.new(1, -8, 0, math.max(if row.note then NOTE_MIN_HEIGHT else ROW_HEIGHT, height))
 		end
 	end
 
@@ -233,7 +241,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			return gui.Enabled
 		end,
 		setTitle = function(text: string)
-			titleLabel.Text = text
+			titleLabel.Text = Lang.t(text)
 		end,
 		setRows = function(rows: { Row })
 			currentTheme = UiTheme.get() -- the time of day may have changed since the modal was created
@@ -250,7 +258,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 					Size = UDim2.new(1, -8, 0, ROW_HEIGHT),
 					AutoButtonColor = tappable,
 					Active = tappable,
-					Text = row.text,
+					Text = Lang.t(row.text),
 					TextScaled = true,
 					TextXAlignment = Enum.TextXAlignment.Left,
 				}, list) :: TextButton
@@ -273,7 +281,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 					button.TextColor3 = row.color
 				end
 				button.InputBegan:Connect(beginDrag)
-				table.insert(rowButtons, { button = button, text = row.text, note = row.note == true })
+				table.insert(rowButtons, { button = button, text = Lang.t(row.text), note = row.note == true })
 				local onTap = row.onTap
 				if onTap then
 					button.Activated:Connect(function()

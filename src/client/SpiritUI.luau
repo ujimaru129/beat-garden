@@ -12,26 +12,27 @@ local MarketUI = require(script.Parent.MarketUI)
 local UiTheme = require(script.Parent.UiTheme)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
+local Lang = require(script.Parent.Lang)
 local Toast = require(script.Parent.Toast)
 
 local SpiritUI = {}
 
 local function effectText(def: Spirits.Def): string
-	local text = `tends the plant every {def.autoCareSeconds}s (+{def.autoCarePoints})`
+	local text = Lang.t(`tends the plant every {def.autoCareSeconds}s (+{def.autoCarePoints})`)
 	if def.mutationMult > 1 then
-		text ..= `, mutations x{def.mutationMult}`
+		text ..= Lang.t(`, mutations x{def.mutationMult}`)
 	end
 	if def.tendMult > 1 then
-		text ..= `, your tends grow x{def.tendMult}`
+		text ..= Lang.t(`, your tends grow x{def.tendMult}`)
 	end
 	if def.discoveryMult > 1 then
-		text ..= `, new book entries pay x{def.discoveryMult}`
+		text ..= Lang.t(`, new book entries pay x{def.discoveryMult}`)
 	end
 	if def.sellMult > 1 then
-		text ..= `, sells for x{def.sellMult}`
+		text ..= Lang.t(`, sells for x{def.sellMult}`)
 	end
 	if def.freshMult > 1 then
-		text ..= `, fruit stays fresh x{def.freshMult} longer`
+		text ..= Lang.t(`, fruit stays fresh x{def.freshMult} longer`)
 	end
 	return text
 end
@@ -56,7 +57,9 @@ local function rowsFor(snapshot: GardenState.Snapshot, hatch: () -> (), equip: (
 		if def then
 			local equipped = spirit.id == snapshot.equippedSpirit
 			table.insert(rows, {
-				text = `{if equipped then "Equipped: " else "Equip "}{def.name.en} - {effectText(def)}`,
+				text = `{Lang.t(if equipped then `Equipped: {def.name.en}` else `Equip {def.name.en}`)} - {effectText(
+					def
+				)}`,
 				color = if equipped then Palette.Hues.Yuzu.Night else nil,
 				onTap = function()
 					equip(if equipped then nil else spirit.id)

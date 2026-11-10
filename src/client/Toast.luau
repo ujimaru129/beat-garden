@@ -3,6 +3,7 @@
 
 local Players = game:GetService("Players")
 
+local Lang = require(script.Parent.Lang)
 local UiTheme = require(script.Parent.UiTheme)
 
 local Toast = {}
@@ -68,7 +69,8 @@ local function panelOpen(): boolean
 	return false
 end
 
-function Toast.show(text: string)
+function Toast.show(message: string)
+	local text = Lang.t(message)
 	local l = ensure()
 	l.Position = UDim2.fromScale(0.5, if panelOpen() then TOP_Y else NORMAL_Y)
 	token += 1

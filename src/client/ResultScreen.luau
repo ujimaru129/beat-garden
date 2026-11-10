@@ -4,6 +4,7 @@
 
 local Players = game:GetService("Players")
 
+local Lang = require(script.Parent.Lang)
 local UiTheme = require(script.Parent.UiTheme)
 
 local ResultScreen = {}
@@ -141,7 +142,9 @@ function ResultScreen.show(data: Data, onClose: () -> ())
 	label(panel, {
 		Position = UDim2.fromOffset(16, 8),
 		Size = UDim2.new(1, -32, 0, 26),
-		Text = `{data.songName}  -  {data.difficulty}{if data.favorite then "   \u{2665} Favourite song!" else ""}`,
+		Text = Lang.t(
+			`{data.songName}  -  {data.difficulty}{if data.favorite then "   \u{2665} Favourite song!" else ""}`
+		),
 		Font = Enum.Font.GothamBlack,
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
@@ -168,7 +171,7 @@ function ResultScreen.show(data: Data, onClose: () -> ())
 	label(panel, {
 		Position = UDim2.fromOffset(16, 212),
 		Size = UDim2.new(0.34, 0, 0, 22),
-		Text = "SCORE",
+		Text = Lang.t("SCORE"),
 		TextTransparency = 0.2,
 	})
 
@@ -186,7 +189,7 @@ function ResultScreen.show(data: Data, onClose: () -> ())
 		label(panel, {
 			Position = UDim2.new(x, 0, 0, y),
 			Size = UDim2.new(0.32, 0, 0, 24),
-			Text = row[1],
+			Text = Lang.t(row[1]),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
 		label(panel, {
@@ -199,7 +202,7 @@ function ResultScreen.show(data: Data, onClose: () -> ())
 	label(panel, {
 		Position = UDim2.new(x, 0, 0, 202),
 		Size = UDim2.new(0.54, 0, 0, 28),
-		Text = `+{data.points} growth  -  {data.stage} {math.floor(data.fraction * 100)}%`
+		Text = Lang.t(`+{data.points} growth  -  {data.stage} {math.floor(data.fraction * 100)}%`)
 			.. (if data.xpGained then `  -  +{data.xpGained} XP` else ""),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})

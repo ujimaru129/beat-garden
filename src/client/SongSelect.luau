@@ -13,6 +13,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local Palette = require(ReplicatedStorage.Shared.Palette)
+local Lang = require(script.Parent.Lang)
 local ScrollThumb = require(script.Parent.ScrollThumb)
 local UiTheme = require(script.Parent.UiTheme)
 
@@ -113,7 +114,7 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 		Position = UDim2.fromOffset(18, 8),
 		Size = UDim2.new(0.6, 0, 0, 40),
 		BackgroundTransparency = 1,
-		Text = "SELECT SONG",
+		Text = Lang.t("SELECT SONG"),
 		TextScaled = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, panel) :: TextLabel
@@ -291,7 +292,7 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 		Position = UDim2.new(1, 0, 0, 50),
 		Size = UDim2.fromOffset(92, 24),
 		BackgroundColor3 = Palette.Base.Torii,
-		Text = "\u{2665} BONUS",
+		Text = Lang.t("\u{2665} BONUS"),
 		TextSize = 14,
 		Font = Enum.Font.GothamBlack,
 		TextColor3 = Color3.new(1, 1, 1),
