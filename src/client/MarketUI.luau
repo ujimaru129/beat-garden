@@ -115,7 +115,12 @@ local function shopRows(
 		})
 	end
 	extra(`Restock the shop for you  {Products.Prices.Restock} R$`, "Restock")
-	extra(`Look Sprinkler  {Products.Prices.Sprinkler} R$  (mutations x{Products.SprinklerBoost})`, "Sprinkler")
+	local sprinklerText =
+		`Growth Sprinkler  {Products.Prices.Sprinkler} R$  (all plants grow x{1 + Products.SprinklerGrowBonus} for {Products.SprinklerSeconds // 60} min)`
+	if snapshot.sprinklerLeft > 0 then
+		sprinklerText ..= `  -  on: {snapshot.sprinklerLeft // 60}:{string.format("%02d", snapshot.sprinklerLeft % 60)} left`
+	end
+	extra(sprinklerText, "Sprinkler")
 	extra(
 		if snapshot.instantCredits > 0
 			then `Use Instant Grow  (you have {snapshot.instantCredits})`

@@ -42,7 +42,7 @@ export type Data = {
 	tips: { [string]: boolean }, -- one-time tips already shown (Garden/Tips)
 	receipts: { string }, -- recent Robux purchase ids already granted (never grant one twice)
 	instantCredits: number, -- paid Instant Grows not used yet
-	sprinklerUntil: number, -- unix seconds: new plants get the Look Sprinkler until then
+	sprinklerUntil: number, -- unix seconds: the Growth Sprinkler works until then
 	restockSlot: number, -- shop slot the personal restock below belongs to
 	restockShift: number, -- personal restock (Garden/Shop `shift`); only valid inside restockSlot
 	tutorialStep: number, -- 1..5 = in the tutorial, Tutorial.Done = finished or skipped
@@ -99,7 +99,6 @@ local function sanitizePlot(raw: any): Growth.Plot?
 		bestPerfectStreak = num(raw.bestPerfectStreak, 0, 0),
 		mutationMult = num(raw.mutationMult, 1, 1),
 		rolled = raw.rolled == true,
-		sprinkled = raw.sprinkled == true,
 		mutation = if raw.rolled == true
 				and type(raw.mutation) == "string"
 				and Mutations.isMutation(raw.mutation)

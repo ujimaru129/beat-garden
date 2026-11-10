@@ -160,6 +160,18 @@ function TendFlow.start()
 		picking = false
 		setPromptsEnabled(true)
 	end)
+	-- The preview starts at the busiest segment (most Hard notes): usually the chorus.
+	local function previewStartOf(song: Songs.SongData): number
+		local bestStart, bestCount = 0, -1
+		for _, seg in song.segments do
+			local count = #((seg :: any).Hard or {})
+			if count > bestCount then
+				bestStart, bestCount = seg.startMs, count
+			end
+		end
+		return bestStart
+	end
+
 	local function openSongPicker()
 		-- The planted seed's favourite genre: songs of that genre are marked and listed first.
 		local snapshot = GardenState.get()
@@ -183,6 +195,8 @@ function TendFlow.start()
 				bpm = song.bpm,
 				favorite = song.genre == favorite,
 				artAssetId = SongArt[song.songId],
+				audioAssetId = song.audioAssetId,
+				previewStartMs = previewStartOf(song),
 			})
 		end
 		picking = true

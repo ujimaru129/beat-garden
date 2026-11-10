@@ -1,23 +1,24 @@
 --!strict
--- Sleeve artwork for the song select screen: songId -> an image address made from the Creator Hub id.
+-- Sleeve artwork for the song select screen: songId -> "rbxassetid://<Image id>".
 -- A square image (512x512 or more) works best; songs without an entry show their initials on the genre colours.
 -- The images are in assets/songart/ (one per song).
+--
+-- Creator Hub shows the id of the uploaded "Decal"; an ImageLabel needs the id of the "Image" that belongs to it.
+-- Studio's Asset Manager lists both for every upload (Type = Image is the one to use here).
 
--- The ids Creator Hub shows for an uploaded Image are Decal ids. A "thumbnail" address works for those (and for plain
--- image ids) wherever an ImageLabel is used, so that is what the sleeves use.
 local function image(id: string): string
-	return `rbxthumb://type=Asset&id={id}&w=420&h=420`
+	return `rbxassetid://{id}`
 end
 
 return table.freeze({
-	kabuki_dance = image("70952436279389"),
-	dard_aur_dhamaka = image("128375813714853"),
-	pastel_trip = image("128155770217807"),
-	kamikaze = image("126428333735019"),
-	gorilla_glue = image("110889861846415"),
-	fly_me_to_the_saitama = image("121844605306176"),
-	metropolitan_expressway = image("110142928408735"),
-	naniwa_march = image("127616938013529"),
-	blue_samurai = image("74172416191196"),
-	shinjuku_deep_romance = image("122400082939476"),
+	kabuki_dance = image("89922850902813"),
+	dard_aur_dhamaka = image("109437283664632"),
+	pastel_trip = image("131267665491357"),
+	kamikaze = image("116748942312280"),
+	gorilla_glue = image("100187950830411"),
+	fly_me_to_the_saitama = image("76282413359343"),
+	metropolitan_expressway = image("110747535513328"),
+	naniwa_march = image("108135762307534"),
+	blue_samurai = image("83508184986174"),
+	shinjuku_deep_romance = image("140512173105881"),
 } :: { [string]: string })

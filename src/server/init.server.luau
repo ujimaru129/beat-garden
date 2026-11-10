@@ -7,6 +7,11 @@ local Leaderboards = require(script.Leaderboards)
 local RhythmDev = require(script.RhythmDev)
 local World = require(script.World)
 
+-- The default for every player's screen: landscape (the interface is made for it).
+pcall(function()
+	(game:GetService("StarterGui") :: any).ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+end)
+
 World.start() -- first: the plots and shops place themselves on the island's floor
 Garden.start()
 Leaderboards.start()

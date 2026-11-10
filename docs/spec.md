@@ -346,7 +346,7 @@ flowchart LR
 | ゲームパス | Night Guard+ | 番人スピリットの強化（完全防御ではない） | 149 R$ | v1.1 |
 | デベロッパープロダクト | Instant Grow | 1区画を即結実 | 25 R$ | MVP |
 | デベロッパープロダクト | Restock | ショップ在庫を即入れ替え（自分だけ） | 39 R$ | MVP |
-| デベロッパープロダクト | Look Sprinkler | 一定時間、変異確率アップ | 49 R$ | MVP |
+| デベロッパープロダクト | Growth Sprinkler | 10分間、全部の植物の成長が3倍（確率は変えない。Robux の有料ランダムを避けるため。2026/11/10 変更） | 49 R$ | MVP |
 | デベロッパープロダクト | 限定イベント種 | 期間限定曲の種 | 99 R$〜 | v1.1 |
 
 ### 収益の柱以外
@@ -402,7 +402,7 @@ MVPは6週間で「植える→リズムで世話→変異→収穫→売る→�
 - 種12種（12曲、メドレー3ファイル）、変異3種（Film / Vapor / Golden Hour）、スピリット2種
 - 世話、収穫、売却、ショップ、所持品、交換
 - 昼夜切替（演出のみ。夜のゲーム要素はv1.1）
-- 課金：Double Growth、Extra Plot、Instant Grow、Restock、Look Sprinkler
+- 課金：Double Growth、Extra Plot、Instant Grow、Restock、Growth Sprinkler
 
 ### Week 1：基盤
 

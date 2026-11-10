@@ -27,6 +27,12 @@ local WorldFx = require(script.WorldFx)
 
 local player = Players.LocalPlayer :: Player
 
+-- The whole interface is made for a landscape phone: ask for landscape (it follows the sensor, so it can still flip
+-- between the two landscape sides). Pcall: the property is missing on some platforms.
+pcall(function()
+	(player:WaitForChild("PlayerGui") :: any).ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+end)
+
 -- Garden data from the server, then the screens that use it.
 GardenState.start()
 Atmosphere.start()

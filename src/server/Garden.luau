@@ -166,7 +166,6 @@ local function ensureRolled(s: Session, plot: Growth.Plot)
 		* (if spiritDef then spiritDef.mutationMult else 1)
 		* Progression.mutationMult(stars)
 		* Rush.boost(seedOf(plot).favoriteGenre, os.time())
-		* (if plot.sprinkled then Products.SprinklerBoost else 1)
 	plot.mutation = Mutations.roll(plot.bestPerfectStreak, chanceMult, math.random)
 	plot.rolled = true
 end
@@ -754,7 +753,6 @@ local function plant(s: Session, payload: unknown): any
 	end
 	d.plots[plotKey] =
 		Growth.newPlot(seedId, os.time(), Progression.growTimeMult(Progression.starsFor(d.mastery[seedId] or 0)))
-	d.plots[plotKey].sprinkled = d.sprinklerUntil > os.time()
 	advanceTutorial(s, "plant")
 	refresh(s)
 	push(s)
@@ -956,6 +954,20 @@ local function equip(s: Session, payload: unknown): any
 end
 
 -- Called every second: an equipped spirit tends every growing plant on its own timer.
+-- The Growth Sprinkler (a Robux product): while it works, every plant that is still growing gets extra growth seconds
+-- each second. It is only called once a second, so the bonus is a whole number of seconds.
+local function applySprinkler(s: Session, now: number)
+	local d = data(s)
+	if d.sprinklerUntil <= now then
+		return
+	end
+	for _, plot in d.plots do
+		if Growth.stageFor(fractionOf(s, plot, now)) ~= "Fruit" then
+			plot.careGauge += Products.SprinklerGrowBonus
+		end
+	end
+end
+
 local function autoCare(s: Session, now: number)
 	local def = equippedSpiritDef(s)
 	if not def or now < s.nextAutoCare then
@@ -1094,10 +1106,7 @@ local function processReceipt(info: { [string]: any }): Enum.ProductPurchaseDeci
 		d.restockShift = restockShift(d, now) + 1
 		d.restockSlot = Shop.slotOf(now)
 	elseif kind == "Sprinkler" then
-		d.sprinklerUntil = now + Products.SprinklerSeconds
-		for _, plot in d.plots do
-			plot.sprinkled = true
-		end
+		d.sprinklerUntil = math.max(d.sprinklerUntil, now) + Products.SprinklerSeconds
 	end
 	table.insert(d.receipts, receiptId)
 	while #d.receipts > Products.MaxReceipts do
@@ -1401,6 +1410,7 @@ function Garden.start()
 			local now = os.time()
 			for _, s in sessions do
 				refresh(s)
+				applySprinkler(s, now)
 				autoCare(s, now)
 			end
 			if sinceSave >= AUTOSAVE_SECONDS then

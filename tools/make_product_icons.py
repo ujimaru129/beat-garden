@@ -1,7 +1,7 @@
 """Makes the icons (512x512 PNG) of the three developer products in the pop style of the logo: Instant Grow, Restock and
-Look Sprinkler. Roblox does not require an image for a developer product, but one makes the purchase window friendlier.
+Growth Sprinkler. Roblox does not require an image for a developer product, but one makes the purchase window friendlier.
 Usage: python3 tools/make_product_icons.py  ->  assets/branding/product_instant_grow.png, product_restock.png,
-product_look_sprinkler.png"""
+product_growth_sprinkler.png"""
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import math, os
 
@@ -191,7 +191,7 @@ img = star(img, 910, 150, 44, (255, 255, 255, 255))
 img = label(img, "NEW", 512, 130, 170, (255, 244, 130, 255))
 save(img, "product_restock")
 
-# --- Look Sprinkler: a watering can pouring sparkles on a sprout ---------------------------------------------
+# --- Growth Sprinkler: a watering can pouring sparkles on a sprout ---------------------------------------------
 img = background([(255, 160, 215), (190, 120, 235), (255, 160, 215), (230, 140, 230)])
 can = layer(); cd = ImageDraw.Draw(can)
 def rr(box, fill, radius=40, outline=INK, width=14):
@@ -217,5 +217,5 @@ img = mascot(img, 560, 640, 990)
 img = star(img, 120, 150, 58, (255, 255, 255, 255))
 img = star(img, 900, 700, 48, (255, 244, 130, 255))
 img = star(img, 520, 90, 38, (255, 255, 255, 255))
-img = label(img, "LUCK", 700, 880, 170, (255, 255, 255, 255))
-save(img, "product_look_sprinkler")
+img = label(img, "x3", 770, 880, 200, (255, 255, 255, 255))
+save(img, "product_growth_sprinkler")

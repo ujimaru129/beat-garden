@@ -7,6 +7,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -23,6 +24,8 @@ export type Item = {
 	bpm: number,
 	favorite: boolean,
 	artAssetId: string?, -- artwork for the sleeve (Songs/Art); nil = initials on the genre colours
+	audioAssetId: string?, -- the song's audio; plays as a preview while the card is selected
+	previewStartMs: number?, -- where the preview starts in the audio (default 0)
 }
 
 export type Select = {
@@ -34,6 +37,9 @@ export type Select = {
 local BAR_COUNT = 12
 local CARD_HEIGHT = 58
 local CARD_HEIGHT_SELECTED = 72
+local PREVIEW_VOLUME = 0.6
+local PREVIEW_SECONDS = 20 -- the preview fades out after this long
+local PREVIEW_FADE_S = 0.4
 
 local function make(className: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(className)
@@ -434,6 +440,71 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 		}):Play()
 	end
 
+	-- Preview audio: the selected song plays on its own, fading in; changing the card or closing stops it.
+	local previewSounds: { [string]: Sound } = {}
+	local previewToken = 0
+	local currentPreview: Sound? = nil
+
+	local function stopPreview()
+		previewToken += 1
+		local sound = currentPreview
+		currentPreview = nil
+		if sound then
+			TweenService:Create(sound, TweenInfo.new(0.15), { Volume = 0 }):Play()
+			task.delay(0.2, function()
+				sound:Pause()
+			end)
+		end
+	end
+
+	local function destroyPreviews()
+		stopPreview()
+		for _, sound in previewSounds do
+			sound:Destroy()
+		end
+		table.clear(previewSounds)
+	end
+
+	local function playPreview(item: Item)
+		stopPreview()
+		local assetId = item.audioAssetId
+		if not assetId then
+			return
+		end
+		local token = previewToken
+		local sound = previewSounds[assetId]
+		if not sound then
+			sound = make("Sound", {
+				Name = "SongPreview",
+				SoundId = `rbxassetid://{assetId}`,
+				Volume = 0,
+				Looped = false,
+			}, SoundService) :: Sound
+			previewSounds[assetId] = sound
+		end
+		local previewSound = sound :: Sound
+		task.spawn(function()
+			local waited = 0
+			while not previewSound.IsLoaded and waited < 8 do
+				waited += task.wait(0.1)
+			end
+			if token ~= previewToken or not previewSound.IsLoaded then
+				return -- changed card meanwhile, or the audio could not be loaded (stay silent)
+			end
+			currentPreview = previewSound
+			previewSound.TimePosition =
+				math.clamp((item.previewStartMs or 0) / 1000, 0, math.max(0, previewSound.TimeLength - 1))
+			previewSound.Volume = 0
+			previewSound:Play()
+			TweenService:Create(previewSound, TweenInfo.new(PREVIEW_FADE_S), { Volume = PREVIEW_VOLUME }):Play()
+			task.delay(PREVIEW_SECONDS, function()
+				if token == previewToken then
+					TweenService:Create(previewSound, TweenInfo.new(1), { Volume = 0 }):Play()
+				end
+			end)
+		end)
+	end
+
 	local function selectEntry(index: number, animate: boolean)
 		local entry = entries[index]
 		if not entry then
@@ -444,6 +515,7 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 			styleEntry(e, i == index, animate)
 		end
 		showPreview(entry)
+		playPreview(entry.item)
 	end
 
 	-- Drag scrolling by hand ------------------------------------------------------------------------
@@ -521,6 +593,7 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 		end
 		gui.Enabled = false
 		stopRender()
+		destroyPreviews()
 		UiTheme.setBlur("songselect", false)
 		if onClose then
 			onClose()

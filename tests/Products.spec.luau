@@ -21,14 +21,12 @@ return function(loader, expect)
 					sprinklerUntil = 12345,
 					restockSlot = 9,
 					restockShift = 2,
-					plots = { ["1"] = { seedId = "seed_sakura", plantedAt = 1, careGauge = 0, sprinkled = true } },
 				})
 				expect(#clean.receipts).toBe(2)
 				expect(clean.instantCredits).toBe(3)
 				expect(clean.sprinklerUntil).toBe(12345)
 				expect(clean.restockSlot).toBe(9)
 				expect(clean.restockShift).toBe(2)
-				expect(clean.plots["1"].sprinkled).toBe(true)
 				local fresh = PlayerData.sanitize(nil)
 				expect(fresh.instantCredits).toBe(0)
 				expect(#fresh.receipts).toBe(0)

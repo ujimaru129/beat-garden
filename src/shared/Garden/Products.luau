@@ -12,10 +12,11 @@ Products.GrowSpeedMult = 2
 -- Developer products (each purchase is used once)
 Products.InstantGrowId = 3730131933 -- the plant you tended last ripens at once
 Products.RestockId = 3730132210 -- a fresh shop stock for you alone, until the normal stock changes
-Products.SprinklerId = 3730132371 -- plants now growing, and ones planted within SprinklerSeconds, mutate more
+Products.SprinklerId = 3730132371 -- Growth Sprinkler: every growing plant grows 3x as fast for SprinklerSeconds
 
+-- Nothing a Robux purchase gives is random: it saves time, never changes a chance (Roblox's paid random item rules).
 Products.SprinklerSeconds = 600
-Products.SprinklerBoost = 1.5 -- multiplies the mutation chance when the fruit ripens
+Products.SprinklerGrowBonus = 2 -- extra growth seconds per second while it works (so 3x as fast in all)
 
 Products.Prices = table.freeze({
 	DoubleGrowth = 199,

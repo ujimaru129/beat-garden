@@ -31,7 +31,7 @@ export type Snapshot = {
 	instantCredits: number,
 	restockSlot: number, -- the personal restock below is only valid in this shop slot
 	restockShift: number,
-	sprinklerLeft: number, -- seconds the Look Sprinkler still works for new plants
+	sprinklerLeft: number, -- seconds the Growth Sprinkler still works
 	xp: number,
 	level: Progression.LevelInfo,
 	mastery: { [string]: number }, -- seedId -> harvests

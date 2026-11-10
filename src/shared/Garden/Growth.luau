@@ -19,7 +19,6 @@ export type Plot = {
 	mutationMult: number, -- best Difficulty.MutationChanceMultiplier used while tending
 	mutation: string?, -- the mutation rolled when the fruit ripened (Garden/Mutations); nil = a plain fruit
 	rolled: boolean?, -- the roll has been made
-	sprinkled: boolean?, -- a Look Sprinkler was used on this plant (mutation chance up)
 	growMult: number?, -- share of growSeconds this plant needs (seed mastery, fixed when planted); nil = 1
 }
 
