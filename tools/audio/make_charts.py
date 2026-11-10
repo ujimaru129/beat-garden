@@ -59,11 +59,34 @@ ASSET_IDS = {
     "blue_samurai": "113086931885012",
     "shinjuku_deep_romance": "77158663817198",
 }
-# notes per second to aim for, minimum gap in beats, and which grid positions are allowed
+# Per difficulty: notes per beat to aim for (so the same fraction of the beats at any tempo), the minimum gap, which grid positions are allowed, and how far the
+# lane may jump between two close notes (a phone has no room for wide jumps at speed).
+#   Notes between the beats (the "off-beat", 8ths) are only used on slow songs: at 120+ BPM they are too fast to
+#   hit on a phone, and Hard is meant to be playable, so it follows the beat (and the melody on it) there.
+#   "eighth_min_beat_ms": the 8ths are allowed only if one beat is at least this long (about 111 BPM or slower).
 DIFFICULTY = {
-    "Easy": {"density": 1.6, "min_gap_beats": 0.9, "min_gap_ms": 380, "grid": {"beat": 1.0}},
-    "Normal": {"density": 3.4, "min_gap_beats": 0.45, "min_gap_ms": 190, "grid": {"beat": 1.0, "eighth": 0.8}},
-    "Hard": {"density": 6.0, "min_gap_beats": 0.22, "min_gap_ms": 105, "grid": {"beat": 1.0, "eighth": 0.8, "sixteenth": 0.55, "off": 0.15}},
+    "Easy": {"per_beat": 0.65, "min_gap_beats": 0.9, "min_gap_ms": 380, "grid": {"beat": 1.0}, "max_jump": 3},
+    "Normal": {
+        "per_beat": 0.95,
+        "min_gap_beats": 0.45,
+        "min_gap_ms": 200,
+        "grid": {"beat": 1.0, "eighth": 0.5},
+        "grid_tol": 0.16,
+        "burst_cooldown_beats": 2.5,
+        "burst_max_run": 1,
+        "max_jump": 2,
+    },
+    "Hard": {
+        "per_beat": 1.35,
+        "min_gap_beats": 0.45,
+        "min_gap_ms": 165,
+        "grid": {"beat": 1.0, "eighth": 0.6, "sixteenth": 0.3},
+        "grid_tol": 0.16,
+        # quick notes (about 200 ms apart) come in bursts of at most three notes, then a rest of a beat
+        "burst_cooldown_beats": 1.0,
+        "burst_max_run": 2,
+        "max_jump": 2,
+    },
 }
 
 
@@ -101,13 +124,13 @@ def detect_onsets(y: np.ndarray):
     return onsets, spec
 
 
-def grid_class(t: float, beats: np.ndarray) -> str:
+def grid_class(t: float, beats: np.ndarray, tol: float = 0.11) -> str:
     k = int(np.searchsorted(beats, t, side="right") - 1)
     if k < 0 or k >= len(beats) - 1:
         return "off"
     f = (t - beats[k]) / (beats[k + 1] - beats[k])
     for name, center in (("beat", 0.0), ("beat", 1.0), ("eighth", 0.5), ("sixteenth", 0.25), ("sixteenth", 0.75)):
-        if abs(f - center) < 0.11:
+        if abs(f - center) < tol:
             return name
     return "off"
 
@@ -137,7 +160,10 @@ def pick_segments(y: np.ndarray, beats: np.ndarray, join_s: float, count: int, o
 
 def select_onsets(onsets, beats, a: float, b: float, cfg: dict):
     beat_len = float(np.median(np.diff(beats[(beats >= a) & (beats <= b)])))
-    gap = max(cfg["min_gap_ms"] / 1000, cfg["min_gap_beats"] * beat_len)
+    grid = dict(cfg["grid"])
+    min_gap_beats = cfg["min_gap_beats"]
+    per_beat = cfg["per_beat"]
+    gap = max(cfg["min_gap_ms"] / 1000, min_gap_beats * beat_len)
     # Density is spread in chunks of 8 beats so quiet passages stay quiet and busy ones do not eat the budget.
     inside = beats[(beats > a) & (beats < b)]
     edges = [a] + [float(t) for t in inside[::8]] + [b]
@@ -150,13 +176,13 @@ def select_onsets(onsets, beats, a: float, b: float, cfg: dict):
         for o in onsets:
             if not (c0 <= o["t"] < c1):
                 continue
-            cls = grid_class(o["t"], beats)
-            if cls not in cfg["grid"]:
+            cls = grid_class(o["t"], beats, cfg.get("grid_tol", 0.11))
+            if cls not in grid:
                 continue
-            score = 0.6 * o["strength"] + 2.0 * cfg["grid"][cls] + (0.4 if o["low"] > 1.2 and cls == "beat" else 0.0)
+            score = 0.6 * o["strength"] + 2.0 * grid[cls] + (0.4 if o["low"] > 1.2 and cls == "beat" else 0.0)
             pool.append((score, o))
         pool.sort(key=lambda p: -p[0])
-        want = int(round(cfg["density"] * (c1 - c0)))
+        want = int(round(per_beat * (c1 - c0) / beat_len))
         got = 0
         for score, o in pool:
             if got >= want:
@@ -165,10 +191,30 @@ def select_onsets(onsets, beats, a: float, b: float, cfg: dict):
                 taken.append(o)
                 got += 1
     taken.sort(key=lambda o: o["t"])
+    cooldown = cfg.get("burst_cooldown_beats")
+    if cooldown:
+        # Quick notes (closer than 0.6 beat) come in short bursts: at most `burst_max_run` quick gaps in a row, then
+        # a rest of `cooldown` beats before the next burst.
+        quick = 0.6 * beat_len
+        max_run = cfg.get("burst_max_run", 1)
+        kept: list = []
+        run = 0
+        rest_until = -1e9
+        for o in taken:
+            if kept and o["t"] - kept[-1]["t"] < quick:
+                if o["t"] < rest_until or run >= max_run:
+                    continue
+                run += 1
+                if run >= max_run:
+                    rest_until = o["t"] + cooldown * beat_len
+            else:
+                run = 0
+            kept.append(o)
+        taken = kept
     return taken
 
 
-def assign_lanes(taken, lane_edges):
+def assign_lanes(taken, lane_edges, max_jump: int = 3):
     notes = []
     prev_lane, run = -1, 0
     prev_t = -10.0
@@ -178,7 +224,9 @@ def assign_lanes(taken, lane_edges):
         dt = o["t"] - prev_t
         if lane == prev_lane and dt < 0.4 and run >= 2:
             lane = lane + 1 if lane < 3 and (len(notes) % 2 == 0) else lane - 1 if lane > 0 else lane + 1
-        if prev_lane >= 0 and abs(lane - prev_lane) > 2 and dt < 0.22:
+        if prev_lane >= 0 and abs(lane - prev_lane) > max_jump and dt < 0.5:
+            lane = prev_lane + max_jump * (1 if lane > prev_lane else -1)
+        elif prev_lane >= 0 and abs(lane - prev_lane) > 2 and dt < 0.22:
             lane = prev_lane + (1 if lane > prev_lane else -1)
         run = run + 1 if lane == prev_lane else 1
         notes.append([lane, int(round(o["t"] * 1000))])
@@ -214,7 +262,7 @@ def main() -> None:
     for idx, (score, k, a, b) in enumerate(segs):
         entry = {"id": idx, "startMs": int(round(a * 1000)), "endMs": int(round(b * 1000)), "anchorMs": int(round(beats[k] * 1000))}
         for name in DIFFICULTY:
-            entry[name] = assign_lanes(picked[name][idx], edges[name])
+            entry[name] = assign_lanes(picked[name][idx], edges[name], DIFFICULTY[name]["max_jump"])
         out_segments.append(entry)
 
     root = Path(__file__).resolve().parents[2]
