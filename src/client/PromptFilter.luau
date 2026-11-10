@@ -7,6 +7,8 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
+local PromptUi = require(script.Parent.PromptUi)
+
 local PromptFilter = {}
 
 function PromptFilter.start()
@@ -16,6 +18,7 @@ function PromptFilter.start()
 		if not inst:IsA("ProximityPrompt") then
 			return
 		end
+		PromptUi.take(inst) -- our own button at the bottom of the screen (see PromptUi)
 		if inst.Name == "TendPrompt" then
 			local plot = inst.Parent
 			inst.Enabled = plot ~= nil and plot:GetAttribute("OwnerUserId") == me.UserId
