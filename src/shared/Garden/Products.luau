@@ -6,13 +6,13 @@
 local Products = {}
 
 -- Game pass: plants grow twice as fast, for good.
-Products.DoubleGrowthPassId = 0
+Products.DoubleGrowthPassId = 2075494678
 Products.GrowSpeedMult = 2
 
 -- Developer products (each purchase is used once)
-Products.InstantGrowId = 0 -- the plant you tended last ripens at once
-Products.RestockId = 0 -- a fresh shop stock for you alone, until the normal stock changes
-Products.SprinklerId = 0 -- plants now growing, and ones planted within SprinklerSeconds, mutate more
+Products.InstantGrowId = 3730131933 -- the plant you tended last ripens at once
+Products.RestockId = 3730132210 -- a fresh shop stock for you alone, until the normal stock changes
+Products.SprinklerId = 3730132371 -- plants now growing, and ones planted within SprinklerSeconds, mutate more
 
 Products.SprinklerSeconds = 600
 Products.SprinklerBoost = 1.5 -- multiplies the mutation chance when the fruit ripens

@@ -39,6 +39,7 @@
 - [ ] 各曲で、音とノーツが合っているか（特に Naniwa March、Fly Me to the Saitama、Gorilla Glue）
 
 ## 気をつけること
+- **Robux で買った物を、交換・プレゼントに出せるようにしない。** 今は、Robux で買える物（Double Growth と Plot Pass のパス、Instant Grow・Restock・Look Sprinkler の開発者製品）は、どれも本人だけのもので、交換に出せない。コインは Robux で買えず、卵もコインで買う。そのため、国ごとの価格差を悪用する余地（Creator Hub の「収益を保護しましょう」の質問）がない。将来、Robux で卵やコインを買えるようにしたり、有料の物を交換できるようにしたりするときは、先に「価格レベル API」で、交換できる相手や条件を制限する
 
 - 保存の形を変えるときは、`PlayerData.Version` を上げて、`sanitize` に移行の処理を足す
 - 数値（レベルの必要量、価格、確率）は、`docs/progression.md` に書いてある。変えたら、そこも直す
