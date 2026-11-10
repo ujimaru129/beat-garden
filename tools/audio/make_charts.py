@@ -67,24 +67,24 @@ ASSET_IDS = {
 DIFFICULTY = {
     "Easy": {"per_beat": 0.65, "min_gap_beats": 0.9, "min_gap_ms": 380, "grid": {"beat": 1.0}, "max_jump": 3},
     "Normal": {
-        "per_beat": 0.95,
+        "per_beat": 1.1,
         "min_gap_beats": 0.45,
         "min_gap_ms": 200,
         "grid": {"beat": 1.0, "eighth": 0.5},
         "grid_tol": 0.16,
-        "burst_cooldown_beats": 2.5,
+        "burst_cooldown_beats": 1.5,
         "burst_max_run": 1,
         "max_jump": 2,
     },
     "Hard": {
-        "per_beat": 1.35,
+        "per_beat": 1.7,
         "min_gap_beats": 0.45,
         "min_gap_ms": 165,
         "grid": {"beat": 1.0, "eighth": 0.6, "sixteenth": 0.3},
         "grid_tol": 0.16,
-        # quick notes (about 200 ms apart) come in bursts of at most three notes, then a rest of a beat
+        # quick notes (about 200 ms apart) come in bursts of at most four notes, then a rest of a beat
         "burst_cooldown_beats": 1.0,
-        "burst_max_run": 2,
+        "burst_max_run": 3,
         "max_jump": 2,
     },
 }

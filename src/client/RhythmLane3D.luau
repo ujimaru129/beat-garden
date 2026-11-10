@@ -714,7 +714,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		Name = "ComboBurst",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.3),
-		Size = UDim2.fromOffset(420, 80),
+		Size = UDim2.fromOffset(300, 52),
 		BackgroundTransparency = 1,
 		Text = "",
 		TextScaled = true,
@@ -739,7 +739,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		TweenService:Create(
 			comboBurstScale,
 			TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-			{ Scale = if big then 1.5 else 1.15 }
+			{ Scale = if big then 1.3 else 1 }
 		):Play()
 		task.delay(0.65, function()
 			if token ~= burstToken then
@@ -751,9 +751,52 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 				Position = UDim2.fromScale(0.5, 0.24),
 			}):Play()
 		end)
+		-- A wave across the four lanes: each button lights up and a ring bursts out of its lane...
 		for lane = 0, 3 do
-			task.delay(lane * 0.04, function()
+			task.delay(lane * 0.05, function()
+				pressFx(lane)
 				hitFx(lane, "Perfect")
+			end)
+		end
+		-- ...and notes and stars fly up from the buttons, spinning, in the colours of the four lanes.
+		local glyphs = { "\u{266A}", "\u{266B}", "\u{2605}", "\u{2726}" }
+		local count = if big then 28 else 16
+		for i = 1, count do
+			local lane = (i - 1) % 4
+			local button = laneButtons[lane]
+			if not button then
+				continue
+			end
+			local color = Palette.hue(Palette.LaneOrder[lane + 1], "Night"):Lerp(Color3.new(1, 1, 1), 0.2)
+			local startX = button.AbsolutePosition.X + button.AbsoluteSize.X * (0.2 + math.random() * 0.6)
+			local startY = button.AbsolutePosition.Y
+			local piece = make("TextLabel", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromOffset(startX, startY),
+				Size = UDim2.fromOffset(34, 34),
+				BackgroundTransparency = 1,
+				Text = glyphs[math.random(#glyphs)],
+				TextSize = 28,
+				Font = Enum.Font.GothamBlack,
+				TextColor3 = color,
+				TextStrokeTransparency = 0.3,
+				TextStrokeColor3 = Palette.Base.Sumi,
+				Rotation = math.random(-30, 30),
+				ZIndex = 4,
+			}, gui) :: TextLabel
+			local rise = 150 + math.random() * 130
+			local drift = (math.random() - 0.5) * 120
+			local life = 0.8 + math.random() * 0.4
+			task.delay(math.random() * 0.15, function()
+				TweenService:Create(piece, TweenInfo.new(life, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Position = UDim2.fromOffset(startX + drift, startY - rise),
+					Rotation = piece.Rotation + math.random(-180, 180),
+					TextTransparency = 1,
+					TextStrokeTransparency = 1,
+				}):Play()
+				task.delay(life + 0.05, function()
+					piece:Destroy()
+				end)
 			end)
 		end
 	end
