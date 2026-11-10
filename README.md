@@ -79,22 +79,11 @@ selene src
 
 クライアントがサーバーに送るのは「ノーツごとのズレ（ms）、Missは false」の列です。判定数やコンボはサーバーがこの列から計算し直すので、クライアントの申告は信用しません。
 
-### 試す（Studio / Roblox アプリ）
+### Studio で試す
 
-試作は `src/shared/Dev/Flags.luau` の `RhythmPrototype` で切り替えます。`true` の間は公開した place でも動くので、スマホの Roblox アプリでも確認できます（正式公開前に `false` に戻す）。
+1. `rojo serve` して Studio から Connect し、Play
+2. `1`（Easy・100BPM）/ `2`（Normal・128BPM）/ `3`（Hard・150BPM）でテスト譜面が始まる（Studio のみ有効）
+3. PC は D / F / J / K、モバイルは画面下の4ボタン、ゲームパッドは L2 / L1 / R1 / R2
+4. 終了すると Output に結果とサーバー検証の結果が出る
 
-1. `rojo serve` して Studio から Connect し、Play（アプリで確認するときは place を公開して参加）
-2. 楽曲セレクト画面で曲をタップして選ぶ。選択中の曲のプレビューが流れる（PC は ↑ / ↓ でも選べる）
-3. Easy / Normal / Hard をタップ（PC は `1` / `2` / `3`）で、選んだ曲のテスト譜面が始まる
-4. PC は D / F / J / K、モバイルは画面下の4ボタン、ゲームパッドは L2 / L1 / R1 / R2
-5. 終了すると Output に結果とサーバー検証の結果が出る
-
-遅延補正を試すときは、Play 中に LocalPlayer の属性 `LatencyMs` を設定してください（例: 60）。
-
-### 楽曲
-
-曲の一覧は `src/shared/Songs.luau` です（仕様書の Master_Songs と同じ項目）。再生は `src/client/SongPlayer.luau` が担当します。
-
-- **音源がまだない曲**（`audioAssetId` が空）は、Roblox 内蔵の効果音を音程を変えて鳴らす「デモ音源」で再生します。アップロードも権限設定もいらない仮の曲です。いま入っている3曲はすべてこれです
-- **本物の音源を使うとき**は、音声を Roblox にアップロードしてこのエクスペリエンスでの使用を許可し、`audioAssetId`（`rbxassetid://...`）、メドレー内の範囲 `regionStartMs` / `regionEndMs`、譜面のズレ `offsetMs`、プレビュー位置 `previewStartMs` を入れます
-- 音源が8秒たっても始まらない場合（IDの間違い・使用許可なしなど）は Output に警告を出し、音なしで譜面だけ進めます
+遅延補正を試すときは、Play 中に LocalPlayer の属性 `LatencyMs` を設定してください（例: 60）。まだ楽曲がないので、拍に合わせてメトロノーム音を鳴らしています。
