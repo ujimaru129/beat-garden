@@ -4,6 +4,6 @@
 
 local RhythmDev = require(script.RhythmDev)
 
-RhythmDev.start() -- Studio only
+RhythmDev.start() -- prototype, see Shared.Dev.Flags
 
 print("[BeatGarden] server started")

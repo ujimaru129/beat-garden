@@ -1,11 +1,13 @@
 --!strict
--- Studio-only endpoint for the rhythm prototype. Hands out a test chart, times the run on the
--- server, and validates the client's summary the same way the real Tend flow will.
+-- Prototype endpoint for the rhythm game. Hands out a test chart for the chosen song, times
+-- the run on the server, and validates the client's summary the same way the real Tend flow
+-- will. Gives no rewards. Switched by Shared.Dev.Flags.RhythmPrototype.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 
+local Flags = require(ReplicatedStorage.Shared.Dev.Flags)
 local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
+local Songs = require(ReplicatedStorage.Shared.Songs)
 local TestCharts = require(ReplicatedStorage.Shared.Dev.TestCharts)
 
 local RhythmDev = {}
@@ -13,7 +15,7 @@ local RhythmDev = {}
 type Pending = { segment: RhythmEngine.Segment, startedAt: number }
 
 function RhythmDev.start()
-	if not RunService:IsStudio() then
+	if not Flags.RhythmPrototype then
 		return
 	end
 
@@ -25,10 +27,16 @@ function RhythmDev.start()
 
 	remote.OnServerInvoke = function(player: Player, action: unknown, payload: unknown): any
 		if action == "start" then
-			local name = if type(payload) == "string" and (TestCharts :: any)[payload] then payload else "Normal"
-			local segment = (TestCharts :: any)[name] :: RhythmEngine.Segment
+			-- payload: { songId: string, difficulty: string }. Anything invalid falls back to a default.
+			local request: any = if type(payload) == "table" then payload else {}
+			local song = (if type(request.songId) == "string" then Songs.byId(request.songId) else nil)
+				or Songs.List[1]
+			local difficulty = if type(request.difficulty) == "string" and TestCharts.has(request.difficulty)
+				then request.difficulty
+				else "Normal"
+			local segment = TestCharts.build(song.bpm, difficulty) :: RhythmEngine.Segment
 			pending[player] = { segment = segment, startedAt = os.clock() }
-			return { segment = segment, bpm = TestCharts.Bpm[name], name = name }
+			return { segment = segment, songId = song.id, difficulty = difficulty }
 		elseif action == "submit" then
 			local p = pending[player]
 			pending[player] = nil
