@@ -708,6 +708,56 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end)
 	end
 
+	-- Every 10 combos: a big "N COMBO!" springs in at the top of the screen in a new colour each time, and a
+	-- gold ring bursts out of every lane. 50 and 100 are bigger still.
+	local comboBurst = make("TextLabel", {
+		Name = "ComboBurst",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.3),
+		Size = UDim2.fromOffset(420, 80),
+		BackgroundTransparency = 1,
+		Text = "",
+		TextScaled = true,
+		Font = UiTheme.get().head,
+		TextStrokeTransparency = 0,
+		TextStrokeColor3 = Palette.Base.Sumi,
+		ZIndex = 5,
+	}, gui) :: TextLabel
+	local comboBurstScale = make("UIScale", { Scale = 1 }, comboBurst) :: UIScale
+	local burstToken = 0
+	local function celebrateCombo(combo: number)
+		burstToken += 1
+		local token = burstToken
+		local hue = Palette.Hues[Palette.LaneOrder[(combo // 10 - 1) % #Palette.LaneOrder + 1]]
+		local big = combo % 50 == 0
+		comboBurst.Text = `{combo} COMBO!`
+		comboBurst.TextColor3 = hue.Night:Lerp(Color3.new(1, 1, 1), 0.25)
+		comboBurst.TextTransparency = 0
+		comboBurst.TextStrokeTransparency = 0
+		comboBurst.Position = UDim2.fromScale(0.5, 0.3)
+		comboBurstScale.Scale = if big then 0.4 else 0.6
+		TweenService:Create(
+			comboBurstScale,
+			TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Scale = if big then 1.5 else 1.15 }
+		):Play()
+		task.delay(0.65, function()
+			if token ~= burstToken then
+				return
+			end
+			TweenService:Create(comboBurst, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				TextTransparency = 1,
+				TextStrokeTransparency = 1,
+				Position = UDim2.fromScale(0.5, 0.24),
+			}):Play()
+		end)
+		for lane = 0, 3 do
+			task.delay(lane * 0.04, function()
+				hitFx(lane, "Perfect")
+			end)
+		end
+	end
+
 	local hitSounds = HitSounds.create(folder)
 
 	local finished = false
@@ -725,6 +775,9 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			if hit.judgement ~= "Miss" then
 				hitFx(lane, hit.judgement)
 				hitSounds.play(hit.judgement)
+				if hit.combo >= 10 and hit.combo % 10 == 0 then
+					celebrateCombo(hit.combo)
+				end
 			end
 		end
 	end
