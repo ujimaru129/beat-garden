@@ -6,6 +6,7 @@
 local Collection = require(script.Parent.Parent.Garden.Collection)
 local Growth = require(script.Parent.Parent.Garden.Growth)
 local Mutations = require(script.Parent.Parent.Garden.Mutations)
+local Park = require(script.Parent.Parent.Garden.Park)
 local Plots = require(script.Parent.Parent.Garden.Plots)
 local Products = require(script.Parent.Parent.Garden.Products)
 local Seeds = require(script.Parent.Parent.Garden.Seeds)
@@ -35,7 +36,8 @@ export type Data = {
 	spirits: { SpiritInstance },
 	equippedSpirit: string?, -- id of the equipped spirit
 	settings: { latencyMs: number },
-	stats: { tends: number, perfects: number, harvests: number },
+	stats: { tends: number, perfects: number, harvests: number, maxCombo: number },
+	park: Park.State, -- the amusement park (Garden/Park): goals paid, boxes, items, what stands where
 	collection: Collection.Book, -- discovered seed x variant entries (Garden/Collection)
 	xp: number, -- garden XP (Garden/Progression)
 	mastery: { [string]: number }, -- seedId -> harvests of that seed
@@ -73,7 +75,8 @@ function PlayerData.new(): Data
 		spirits = {},
 		equippedSpirit = nil,
 		settings = { latencyMs = 0 },
-		stats = { tends = 0, perfects = 0, harvests = 0 },
+		stats = { tends = 0, perfects = 0, harvests = 0, maxCombo = 0 },
+		park = Park.newState(),
 		collection = {},
 		xp = 0,
 		mastery = {},
@@ -192,6 +195,7 @@ function PlayerData.sanitize(raw: any): Data
 		data.stats.tends = math.floor(num(raw.stats.tends, 0, 0))
 		data.stats.perfects = math.floor(num(raw.stats.perfects, 0, 0))
 		data.stats.harvests = math.floor(num(raw.stats.harvests, 0, 0))
+		data.stats.maxCombo = math.floor(num(raw.stats.maxCombo, 0, 0, 100000))
 	end
 
 	if type(raw.collection) == "table" then
@@ -232,6 +236,8 @@ function PlayerData.sanitize(raw: any): Data
 	data.sprinklerUntil = num(raw.sprinklerUntil, 0, 0)
 	data.restockSlot = math.floor(num(raw.restockSlot, 0, 0))
 	data.restockShift = math.floor(num(raw.restockShift, 0, 0, 1e6))
+
+	data.park = Park.sanitize(raw.park)
 
 	-- Data saved before the tutorial existed: anyone who already has progress skips it.
 	local hasProgress = next(data.plots) ~= nil or data.coins > 0 or data.stats.harvests > 0

@@ -385,6 +385,17 @@ function TendFlow.start()
 		end)
 	end
 
+	-- Studio only: B gives 3 Gift Boxes for the park.
+	if RunService:IsStudio() then
+		UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed or input.KeyCode ~= Enum.KeyCode.B then
+				return
+			end
+			local result = GardenState.call("devBoxes")
+			Toast.show(if result.ok then "+3 Gift Boxes (Studio)" else result.reason or "not available")
+		end)
+	end
+
 	-- Studio only: P switches the Plot Pass on and off, to try the premium plots and the locked look.
 	if RunService:IsStudio() then
 		UserInputService.InputBegan:Connect(function(input, gameProcessed)

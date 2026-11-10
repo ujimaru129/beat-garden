@@ -6,6 +6,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Park = require(ReplicatedStorage.Shared.Garden.Park)
 local Progression = require(ReplicatedStorage.Shared.Garden.Progression)
 
 local GardenState = {}
@@ -35,6 +36,13 @@ export type Snapshot = {
 	xp: number,
 	level: Progression.LevelInfo,
 	mastery: { [string]: number }, -- seedId -> harvests
+	park: {
+		boxes: number, -- gift boxes not opened yet
+		items: { [string]: boolean },
+		placed: { [string]: string }, -- lot id -> item key
+		claimed: { [string]: boolean }, -- goals already paid
+		stats: Park.Stats,
+	},
 }
 
 local current: Snapshot? = nil

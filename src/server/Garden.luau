@@ -21,6 +21,8 @@ local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Growth = require(ReplicatedStorage.Shared.Garden.Growth)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Npcs = require(script.Parent.Npcs)
+local Park = require(ReplicatedStorage.Shared.Garden.Park)
+local ParkBuilder = require(script.Parent.ParkBuilder)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local PlayerData = require(ReplicatedStorage.Shared.Data.PlayerData)
 local PlayerStore = require(script.Parent.PlayerStore)
@@ -87,6 +89,7 @@ type Session = {
 
 local sessions: { [Player]: Session } = {}
 local updateEvent: RemoteEvent
+local parkContainer: Instance -- where the park attractions are built (set in Garden.start)
 
 local function data(s: Session): PlayerData.Data
 	return s.store.data
@@ -175,6 +178,37 @@ local function advanceTutorial(s: Session, event: Tutorial.Event)
 	d.tutorialStep = Tutorial.advance(d.tutorialStep, event)
 end
 
+local cachedSpawn: Vector3? = nil
+local function spawnPosition(): Vector3
+	if cachedSpawn then
+		return cachedSpawn
+	end
+	local spawn = Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+	if spawn then
+		cachedSpawn = spawn.Position
+		return spawn.Position
+	end
+	return Vector3.zero
+end
+
+local function groundY(x: number, z: number): number
+	local hit = Workspace:Raycast(Vector3.new(x, 200, z), Vector3.new(0, -400, 0))
+	return if hit then hit.Position.Y else 0
+end
+
+-- What the park goals measure.
+local function parkStats(d: PlayerData.Data): Park.Stats
+	local found = Collection.progress(d.collection)
+	return {
+		harvests = d.stats.harvests,
+		runs = d.stats.tends,
+		maxCombo = d.stats.maxCombo,
+		book = found,
+		spirits = #d.spirits,
+		level = Progression.levelFor(d.xp).level,
+	}
+end
+
 -- What the owner's client needs to draw the HUD and the market.
 local function snapshot(s: Session): any
 	local d = data(s)
@@ -219,6 +253,13 @@ local function snapshot(s: Session): any
 		xp = d.xp,
 		level = Progression.levelFor(d.xp),
 		mastery = table.clone(d.mastery),
+		park = {
+			boxes = d.park.boxes,
+			items = table.clone(d.park.items),
+			placed = table.clone(d.park.placed),
+			claimed = table.clone(d.park.claimed),
+			stats = parkStats(d),
+		},
 	}
 end
 
@@ -239,8 +280,17 @@ local function rescueIfStuck(s: Session)
 	end
 end
 
+-- Pays the boxes of goals that were reached and draws what stands on the lots (only rebuilds when it changed).
+local function syncPark(s: Session)
+	local d = data(s)
+	local stats = parkStats(d)
+	Park.claimGoals(d.park, stats)
+	ParkBuilder.sync(parkContainer, s.player, s.slot, d.park, stats.level, spawnPosition(), groundY)
+end
+
 local function push(s: Session)
 	rescueIfStuck(s)
+	syncPark(s)
 	updateEvent:FireClient(s.player, snapshot(s))
 end
 
@@ -350,16 +400,6 @@ local function refresh(s: Session)
 	for key in s.nodes do
 		refreshPlot(s, key, if key == home then kind else nil)
 	end
-end
-
-local function spawnPosition(): Vector3
-	local spawn = Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
-	return if spawn then spawn.Position else Vector3.zero
-end
-
-local function groundY(x: number, z: number): number
-	local hit = Workspace:Raycast(Vector3.new(x, 200, z), Vector3.new(0, -400, 0))
-	return if hit then hit.Position.Y else 0
 end
 
 local function freeSlot(): number
@@ -689,6 +729,7 @@ local function tendSubmit(s: Session, payload: unknown): any
 	advanceTutorial(s, "tend")
 	d.stats.tends += 1
 	d.stats.perfects += tally.counts.Perfect
+	d.stats.maxCombo = math.max(d.stats.maxCombo, tally.maxCombo)
 	local tendProgress = { xp = d.xp, mastery = d.mastery }
 	local tendLevelUp, tendUnlocked, tendLevel = Progression.applyTend(tendProgress, tally.accuracy)
 	d.xp = tendProgress.xp
@@ -1148,7 +1189,42 @@ local function devGrant(s: Session, payload: unknown): any
 	return { ok = true }
 end
 
+-- Studio only: gives 3 gift boxes so the park can be tried without finishing the goals.
+local function devBoxes(s: Session): any
+	if not RunService:IsStudio() then
+		return fail("not available")
+	end
+	data(s).park.boxes = math.min(Park.MaxBoxes, data(s).park.boxes + 3)
+	push(s)
+	return { ok = true }
+end
+
 -- ---------------------------------------------------------------------------------------------
+
+-- Opens one gift box: the server picks the item, so nothing on the client can change what is inside.
+local function parkOpen(s: Session): any
+	local d = data(s)
+	local key = Park.openBox(d.park, Random.new())
+	if not key then
+		return fail(if d.park.boxes > 0 then "nothing left to find" else "no gift box")
+	end
+	push(s)
+	return { ok = true, key = key, boxes = d.park.boxes }
+end
+
+-- Puts an owned attraction on an open lot (or clears the lot when the key is nil).
+local function parkPlace(s: Session, payload: unknown): any
+	if type(payload) ~= "table" then
+		return fail("bad request")
+	end
+	local d = data(s)
+	local ok, reason = Park.place(d.park, (payload :: any).lot, (payload :: any).key, Progression.levelFor(d.xp).level)
+	if not ok then
+		return fail(reason or "bad request")
+	end
+	push(s)
+	return { ok = true }
+end
 
 local function createSession(player: Player, container: Instance): Session?
 	local store = PlayerStore.load(player, function(message)
@@ -1241,6 +1317,7 @@ function Garden.start()
 	local container = Instance.new("Folder")
 	container.Name = "Garden"
 	container.Parent = Workspace
+	parkContainer = container
 
 	Npcs.start(container)
 
@@ -1323,6 +1400,10 @@ function Garden.start()
 			return tip(s, payload)
 		elseif action == "useInstantGrow" then
 			return useInstantGrow(s, payload)
+		elseif action == "parkOpen" then
+			return parkOpen(s)
+		elseif action == "parkPlace" then
+			return parkPlace(s, payload)
 		elseif action == "leaderboard" then
 			return { ok = true, boards = Leaderboards.snapshot() }
 		elseif action == "devGrow" then
@@ -1331,6 +1412,8 @@ function Garden.start()
 			return devLevelUp(s)
 		elseif action == "devPlotPass" then
 			return devPlotPass(s)
+		elseif action == "devBoxes" then
+			return devBoxes(s)
 		elseif action == "devGrant" then
 			return devGrant(s, payload)
 		end
@@ -1371,6 +1454,7 @@ function Garden.start()
 	Players.PlayerRemoving:Connect(function(player)
 		local s = sessions[player]
 		sessions[player] = nil
+		ParkBuilder.remove(player)
 		buckets[player] = nil
 		if s then
 			PlayerStore.save(s.store, true)
