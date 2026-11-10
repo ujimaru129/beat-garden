@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local ContentProvider = game:GetService("ContentProvider")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -452,7 +453,9 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 		if sound then
 			TweenService:Create(sound, TweenInfo.new(0.15), { Volume = 0 }):Play()
 			task.delay(0.2, function()
-				sound:Pause()
+				if currentPreview ~= sound then -- not picked again meanwhile
+					sound:Pause()
+				end
 			end)
 		end
 	end
@@ -484,12 +487,24 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 		end
 		local previewSound = sound :: Sound
 		task.spawn(function()
+			-- A Sound does not load by itself: ask for it, then wait (a few seconds at most).
+			local requested = false
+			task.spawn(function()
+				pcall(function()
+					ContentProvider:PreloadAsync({ previewSound })
+				end)
+				requested = true
+			end)
 			local waited = 0
-			while not previewSound.IsLoaded and waited < 8 do
+			while not (requested and previewSound.IsLoaded) and waited < 8 do
 				waited += task.wait(0.1)
 			end
-			if token ~= previewToken or not previewSound.IsLoaded then
-				return -- changed card meanwhile, or the audio could not be loaded (stay silent)
+			if token ~= previewToken then
+				return -- changed card meanwhile
+			end
+			if not previewSound.IsLoaded then
+				warn(`[SongSelect] preview audio {assetId} did not load (permission or moderation?)`)
+				return
 			end
 			currentPreview = previewSound
 			previewSound.TimePosition =
