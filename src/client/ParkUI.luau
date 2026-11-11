@@ -79,11 +79,11 @@ function ParkUI.start()
 		end
 	end
 
-	local function openBox()
+	local function openBox(): boolean
 		local result = GardenState.call("parkOpen")
 		if not result.ok then
 			Toast.show(result.reason or "that did not work")
-			return
+			return false
 		end
 		Toast.show("...")
 		task.wait(0.7)
@@ -93,15 +93,17 @@ function ParkUI.start()
 		else
 			Toast.show(`Gift Box! {itemText(result.key)}`)
 		end
+		return true
 	end
 
-	local function place(lotId: string, key: string?)
+	local function place(lotId: string, key: string?): boolean
 		local result = GardenState.call("parkPlace", { lot = lotId, key = key })
 		if not result.ok then
 			Toast.show(result.reason or "that did not work")
-			return
+			return false
 		end
 		goBack()
+		return true
 	end
 
 	local function mainRows(snapshot: GardenState.Snapshot): { ListModal.Row }
@@ -191,7 +193,7 @@ function ParkUI.start()
 				text = `{if here then "\u{2714} " else ""}{itemText(key)}`,
 				color = paletteColor(key),
 				onTap = function()
-					place(lotId, key)
+					return place(lotId, key)
 				end,
 			})
 		end
@@ -199,7 +201,7 @@ function ParkUI.start()
 			table.insert(rows, {
 				text = "Clear this lot",
 				onTap = function()
-					place(lotId, nil)
+					return place(lotId, nil)
 				end,
 			})
 		end

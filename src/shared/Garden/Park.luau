@@ -39,6 +39,8 @@ export type Stats = {
 	book: number, -- book entries found
 	spirits: number, -- spirits owned
 	level: number, -- garden level
+	pats: number, -- times a spirit was petted
+	bond: number, -- the highest bond level of any spirit (0 = none)
 }
 
 export type State = {
@@ -127,6 +129,11 @@ local goals: { Goal } = {
 	{ id = "spirits_1", stat = "spirits", target = 1, name = "Hatch your first spirit" },
 	{ id = "spirits_3", stat = "spirits", target = 3, name = "Have 3 spirits" },
 	{ id = "spirits_5", stat = "spirits", target = 5, name = "Have 5 spirits" },
+	{ id = "pats_10", stat = "pats", target = 10, name = "Pet your spirits 10 times" },
+	{ id = "pats_50", stat = "pats", target = 50, name = "Pet your spirits 50 times" },
+	{ id = "pats_200", stat = "pats", target = 200, name = "Pet your spirits 200 times" },
+	{ id = "bond_3", stat = "bond", target = 3, name = "Become close friends with a spirit" },
+	{ id = "bond_5", stat = "bond", target = 5, name = "Become best friends with a spirit" },
 	{ id = "level_5", stat = "level", target = 5, name = "Reach garden level 5" },
 	{ id = "level_10", stat = "level", target = 10, name = "Reach garden level 10" },
 	{ id = "level_15", stat = "level", target = 15, name = "Reach garden level 15" },

@@ -23,6 +23,7 @@ export type Fruit = {
 export type SpiritInstance = {
 	id: string, -- unique per spirit
 	kind: string, -- Spirits kind
+	bond: number, -- how much it has been petted (Spirits.bondLevel)
 }
 
 export type Data = {
@@ -36,7 +37,7 @@ export type Data = {
 	spirits: { SpiritInstance },
 	equippedSpirit: string?, -- id of the equipped spirit
 	settings: { latencyMs: number },
-	stats: { tends: number, perfects: number, harvests: number, maxCombo: number },
+	stats: { tends: number, perfects: number, harvests: number, maxCombo: number, pats: number },
 	park: Park.State, -- the amusement park (Garden/Park): goals paid, boxes, items, what stands where
 	collection: Collection.Book, -- discovered seed x variant entries (Garden/Collection)
 	xp: number, -- garden XP (Garden/Progression)
@@ -75,7 +76,7 @@ function PlayerData.new(): Data
 		spirits = {},
 		equippedSpirit = nil,
 		settings = { latencyMs = 0 },
-		stats = { tends = 0, perfects = 0, harvests = 0, maxCombo = 0 },
+		stats = { tends = 0, perfects = 0, harvests = 0, maxCombo = 0, pats = 0 },
 		park = Park.newState(),
 		collection = {},
 		xp = 0,
@@ -178,7 +179,11 @@ function PlayerData.sanitize(raw: any): Data
 				and Spirits.get(spirit.kind)
 			then
 				seen[spirit.id] = true
-				table.insert(data.spirits, { id = spirit.id, kind = spirit.kind })
+				table.insert(data.spirits, {
+					id = spirit.id,
+					kind = spirit.kind,
+					bond = math.floor(num(spirit.bond, 0, 0, Spirits.MaxBond)),
+				})
 			end
 		end
 		if type(raw.equippedSpirit) == "string" and seen[raw.equippedSpirit] then
@@ -196,6 +201,7 @@ function PlayerData.sanitize(raw: any): Data
 		data.stats.perfects = math.floor(num(raw.stats.perfects, 0, 0))
 		data.stats.harvests = math.floor(num(raw.stats.harvests, 0, 0))
 		data.stats.maxCombo = math.floor(num(raw.stats.maxCombo, 0, 0, 100000))
+		data.stats.pats = math.floor(num(raw.stats.pats, 0, 0, 1e9))
 	end
 
 	if type(raw.collection) == "table" then

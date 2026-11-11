@@ -158,6 +158,25 @@ Spirits.List = table.freeze(list)
 Spirits.EggPrice = 150 -- coins
 Spirits.MaxOwned = 100
 
+-- Pets: petting a spirit raises its bond. Five bond levels (hearts); the bond is only for show and for goals,
+-- it does not change what the spirit does.
+Spirits.BondSteps = table.freeze({ 0, 8, 25, 60, 120 }) -- bond points needed for level 1..5
+Spirits.MaxBondLevel = #Spirits.BondSteps
+Spirits.MaxBond = 100000
+Spirits.PatCooldown = 1.2 -- seconds between pats of the same spirit that count
+Spirits.MaxPets = 8 -- pets that roam a territory at once
+
+-- 1..MaxBondLevel for a bond value.
+function Spirits.bondLevel(bond: number): number
+	local level = 1
+	for i, need in Spirits.BondSteps do
+		if bond >= need then
+			level = i
+		end
+	end
+	return level
+end
+
 local byKind: { [string]: Def } = {}
 for _, def in list do
 	byKind[def.kind] = def

@@ -557,7 +557,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 
 	-- Parts that appear during the run (a plant that grows a stage, a spirit) are hidden too.
 	local worldConns: { RBXScriptConnection } = {}
-	for _, rootName in { "Garden", "PlotVisuals" } do
+	for _, rootName in { "Garden", "PlotVisuals", "PetFx" } do
 		local root = Workspace:FindFirstChild(rootName)
 		if root then
 			for _, d in root:GetDescendants() do

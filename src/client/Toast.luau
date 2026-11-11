@@ -14,7 +14,7 @@ local MAX_SECONDS = 3.5
 
 -- Full-screen panels that sit over the usual toast spot: the toast moves above them while one is open.
 local PANELS = { "ListModal", "SongSelect", "DifficultyPicker" }
-local TOP_Y = 0.12
+local TOP_Y = 0.17
 local NORMAL_Y = 0.28
 
 local label: TextLabel? = nil
@@ -39,7 +39,7 @@ local function ensure(): TextLabel
 	l.Visible = false
 	l.Parent = gui
 	local size = Instance.new("UISizeConstraint")
-	size.MaxSize = Vector2.new(640, 90)
+	size.MaxSize = Vector2.new(500, 90)
 	size.MinSize = Vector2.new(0, 50)
 	size.Parent = l
 	local corner = Instance.new("UICorner")

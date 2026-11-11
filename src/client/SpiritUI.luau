@@ -17,6 +17,12 @@ local Toast = require(script.Parent.Toast)
 
 local SpiritUI = {}
 
+-- "♥♥♡♡♡": the bond level of a spirit (how much it has been petted).
+local function hearts(bond: number?): string
+	local level = Spirits.bondLevel(bond or 0)
+	return string.rep("\u{2665}", level) .. string.rep("\u{2661}", Spirits.MaxBondLevel - level)
+end
+
 local function effectText(def: Spirits.Def): string
 	local text = Lang.t(`tends the plant every {def.autoCareSeconds}s (+{def.autoCarePoints})`)
 	if def.mutationMult > 1 then
@@ -37,7 +43,11 @@ local function effectText(def: Spirits.Def): string
 	return text
 end
 
-local function rowsFor(snapshot: GardenState.Snapshot, hatch: () -> (), equip: (id: string?) -> ()): { ListModal.Row }
+local function rowsFor(
+	snapshot: GardenState.Snapshot,
+	hatch: () -> boolean,
+	equip: (id: string?) -> boolean
+): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
 	if snapshot.eggs > 0 then
 		table.insert(rows, {
@@ -57,12 +67,13 @@ local function rowsFor(snapshot: GardenState.Snapshot, hatch: () -> (), equip: (
 		if def then
 			local equipped = spirit.id == snapshot.equippedSpirit
 			table.insert(rows, {
-				text = `{Lang.t(if equipped then `Equipped: {def.name.en}` else `Equip {def.name.en}`)} - {effectText(
-					def
-				)}`,
+				text = `{hearts(spirit.bond)} {Lang.t(
+					if equipped then `Equipped: {def.name.en}` else `Equip {def.name.en}`
+				)} - {effectText(def)}`,
 				color = if equipped then Palette.Hues.Yuzu.Night else nil,
+				selected = equipped,
 				onTap = function()
-					equip(if equipped then nil else spirit.id)
+					return equip(if equipped then nil else spirit.id)
 				end,
 			})
 		end
@@ -73,7 +84,7 @@ end
 function SpiritUI.start()
 	local player = Players.LocalPlayer :: Player
 
-	local function hatch()
+	local function hatch(): boolean
 		local result = GardenState.call("hatch")
 		if result.ok then
 			local def = Spirits.get(result.kind)
@@ -81,12 +92,13 @@ function SpiritUI.start()
 		else
 			Toast.show(result.reason or "could not hatch")
 		end
+		return result.ok == true
 	end
-	local function equip(id: string?)
+	local function equip(id: string?): boolean
 		local result = GardenState.call("equip", id)
 		if not result.ok then
 			Toast.show(result.reason or "could not equip")
-			return
+			return false
 		end
 		local snapshot = GardenState.get()
 		local name = "spirit"
@@ -99,6 +111,7 @@ function SpiritUI.start()
 			end
 		end
 		Toast.show(if id then `{name} is now with you!` else "Spirit put away")
+		return true
 	end
 
 	local modal = ListModal.create("Spirits", function()

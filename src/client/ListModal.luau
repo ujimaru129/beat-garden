@@ -6,6 +6,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local ScrollThumb = require(script.Parent.ScrollThumb)
@@ -17,7 +18,9 @@ local ListModal = {}
 export type Row = {
 	text: string,
 	color: Color3?,
-	onTap: (() -> ())?, -- nil = just text
+	-- nil = just text. May return true (it worked: the row flashes green) or false (it did not: red).
+	onTap: (() -> boolean?)?,
+	selected: boolean?, -- the chosen one (the equipped spirit ...): drawn lit up with a white frame and a check
 	note: boolean?, -- a long explanation: scaled on its own, and it does not set the common text size
 }
 
@@ -43,6 +46,46 @@ local function make(className: string, props: { [string]: any }, parent: Instanc
 	inst.Parent = parent
 	return inst
 end
+
+-- A coloured flash over a row (the result of tapping it), and a quick squash when it is pressed.
+local function flash(button: TextButton, color: Color3)
+	if not button.Parent then
+		return
+	end
+	local overlay = Instance.new("Frame")
+	overlay.Name = "Flash"
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.BackgroundColor3 = color
+	overlay.BackgroundTransparency = 0.1
+	overlay.BorderSizePixel = 0
+	overlay.ZIndex = 20
+	overlay.Active = false
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = overlay
+	overlay.Parent = button
+	TweenService:Create(overlay, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 1,
+	}):Play()
+	task.delay(0.75, function()
+		overlay:Destroy()
+	end)
+end
+
+local function squash(button: TextButton)
+	local scale = button:FindFirstChildOfClass("UIScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Parent = button
+	end
+	local uiScale = scale :: UIScale
+	uiScale.Scale = 0.94
+	TweenService:Create(uiScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		:Play()
+end
+
+local FLASH_OK = Color3.fromRGB(110, 255, 170)
+local FLASH_FAIL = Color3.fromRGB(255, 110, 110)
 
 -- `onClose` runs whenever the modal closes (tap outside, X, or close()).
 function ListModal.create(title: string, onClose: (() -> ())?): Modal
@@ -186,6 +229,9 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	-- smaller than MIN_TEXT. A row that is still too long wraps onto a second line and its row grows to fit.
 	-- (TextScaled would give every row its own size, so a short name would look bigger than a long one.)
 	local rowButtons: { { button: TextButton, text: string, note: boolean } } = {}
+	-- The server answers a tap and also pushes the new state, which rebuilds the list: the flash must land on the
+	-- row that is there after the rebuild, whichever of the two comes first.
+	local pendingFlash: { index: number, color: Color3, expires: number }? = nil
 	local function applyTextSize()
 		local width = (if list.AbsoluteSize.X > 40 then list.AbsoluteSize.X else 480) - 8 - 28 - 12
 		local best = MAX_TEXT
@@ -271,7 +317,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				}, button)
 				-- Rows that cannot be tapped are quiet text; tappable ones are neon / candy buttons.
 				if tappable then
-					UiTheme.styleButton(button, currentTheme, "Sora", 12, false)
+					UiTheme.styleButton(button, currentTheme, if row.selected then "Matcha" else "Sora", 12, false)
 				else
 					button.BackgroundTransparency = 1
 					UiTheme.styleText(button, currentTheme, "body")
@@ -280,18 +326,45 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				if row.color and currentTheme.night then
 					button.TextColor3 = row.color
 				end
+				-- A frame in the row's colour (green = you can buy it, grey = you cannot ...), day and night.
+				if tappable and (row.color or row.selected) then
+					make("UIStroke", {
+						Name = "RowAccent",
+						Color = if row.selected then Color3.new(1, 1, 1) else row.color,
+						Thickness = if row.selected then 4 else 2.5,
+						ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+					}, button)
+				end
 				button.InputBegan:Connect(beginDrag)
 				table.insert(rowButtons, { button = button, text = Lang.t(row.text), note = row.note == true })
 				local onTap = row.onTap
 				if onTap then
 					button.Activated:Connect(function()
 						if moved < 10 then -- a drag is a scroll, not a tap
-							onTap()
+							squash(button)
+							local ok = onTap()
+							-- the list may have been rebuilt meanwhile: flash the row that is there now
+							if ok ~= nil then
+								local color = if ok then FLASH_OK else FLASH_FAIL
+								pendingFlash = { index = i, color = color, expires = os.clock() + 1.2 }
+								local current = rowButtons[i]
+								if current then
+									flash(current.button, color)
+								end
+							end
 						end
 					end)
 				end
 			end
 			applyTextSize()
+			local pending = pendingFlash
+			if pending and os.clock() < pending.expires then
+				local target = rowButtons[pending.index]
+				if target then
+					pendingFlash = nil
+					flash(target.button, pending.color)
+				end
+			end
 		end,
 	}
 

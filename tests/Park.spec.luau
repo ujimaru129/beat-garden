@@ -13,7 +13,7 @@ return function(loader, expect)
 	end
 
 	local function stats(overrides: { [string]: number }?)
-		local s = { harvests = 0, runs = 0, maxCombo = 0, book = 0, spirits = 0, level = 1 }
+		local s = { harvests = 0, runs = 0, maxCombo = 0, book = 0, spirits = 0, level = 1, pats = 0, bond = 0 }
 		for k, v in overrides or {} do
 			s[k] = v
 		end

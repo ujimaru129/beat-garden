@@ -206,6 +206,14 @@ local function parkStats(d: PlayerData.Data): Park.Stats
 		book = found,
 		spirits = #d.spirits,
 		level = Progression.levelFor(d.xp).level,
+		pats = d.stats.pats,
+		bond = (function()
+			local best = 0
+			for _, spirit in d.spirits do
+				best = math.max(best, Spirits.bondLevel(spirit.bond))
+			end
+			return best
+		end)(),
 	}
 end
 
@@ -288,9 +296,34 @@ local function syncPark(s: Session)
 	ParkBuilder.sync(parkContainer, s.player, s.slot, d.park, stats.level, spawnPosition(), groundY)
 end
 
+-- The pets that roam this player's territory, for every client to draw: up to Spirits.MaxPets spirits that are not
+-- the equipped one (that one stays beside the plant), the most petted first. "id:kind:bond,id:kind:bond".
+local function syncPets(s: Session)
+	local d = data(s)
+	local list: { { spirit: PlayerData.SpiritInstance, order: number } } = {}
+	for index, spirit in d.spirits do
+		if spirit.id ~= d.equippedSpirit then
+			table.insert(list, { spirit = spirit, order = index })
+		end
+	end
+	table.sort(list, function(a, b)
+		if a.spirit.bond ~= b.spirit.bond then
+			return a.spirit.bond > b.spirit.bond
+		end
+		return a.order < b.order
+	end)
+	local parts: { string } = {}
+	for i = 1, math.min(#list, Spirits.MaxPets) do
+		local spirit = list[i].spirit
+		table.insert(parts, `{spirit.id}:{spirit.kind}:{spirit.bond}`)
+	end
+	s.player:SetAttribute("Pets", table.concat(parts, ","))
+end
+
 local function push(s: Session)
 	rescueIfStuck(s)
 	syncPark(s)
+	syncPets(s)
 	updateEvent:FireClient(s.player, snapshot(s))
 end
 
@@ -965,7 +998,7 @@ local function hatch(s: Session): any
 	d.eggs -= 1
 	local kind = Spirits.hatch(math.random)
 	local id = HttpService:GenerateGUID(false)
-	table.insert(d.spirits, { id = id, kind = kind })
+	table.insert(d.spirits, { id = id, kind = kind, bond = 0 })
 	push(s)
 	print(`[Garden] {s.player.Name}: hatched {kind}`)
 	return { ok = true, kind = kind, id = id }
@@ -1189,6 +1222,39 @@ local function devGrant(s: Session, payload: unknown): any
 	return { ok = true }
 end
 
+local lastPat: { [string]: number } = {} -- spirit id -> os.clock() of the last pat that counted
+
+-- Petting a spirit: its bond grows a little (at most once per Spirits.PatCooldown seconds per spirit).
+local function pat(s: Session, payload: unknown): any
+	if type(payload) ~= "string" then
+		return fail("bad request")
+	end
+	local d = data(s)
+	for _, spirit in d.spirits do
+		if spirit.id == payload then
+			local now = os.clock()
+			local level = Spirits.bondLevel(spirit.bond)
+			if now - (lastPat[spirit.id] or -10) < Spirits.PatCooldown then
+				return { ok = true, counted = false, bond = spirit.bond, level = level }
+			end
+			lastPat[spirit.id] = now
+			spirit.bond = math.min(Spirits.MaxBond, spirit.bond + 1)
+			d.stats.pats += 1
+			push(s)
+			local newLevel = Spirits.bondLevel(spirit.bond)
+			return {
+				ok = true,
+				counted = true,
+				bond = spirit.bond,
+				level = newLevel,
+				levelUp = newLevel > level,
+				kind = spirit.kind,
+			}
+		end
+	end
+	return fail("unknown spirit")
+end
+
 -- Studio only: gives 3 gift boxes so the park can be tried without finishing the goals.
 local function devBoxes(s: Session): any
 	if not RunService:IsStudio() then
@@ -1400,6 +1466,8 @@ function Garden.start()
 			return tip(s, payload)
 		elseif action == "useInstantGrow" then
 			return useInstantGrow(s, payload)
+		elseif action == "pat" then
+			return pat(s, payload)
 		elseif action == "parkOpen" then
 			return parkOpen(s)
 		elseif action == "parkPlace" then

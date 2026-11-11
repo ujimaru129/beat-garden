@@ -56,8 +56,8 @@ end
 -- The actions come first (a landscape phone only shows about three rows without scrolling).
 local function shopRows(
 	snapshot: GardenState.Snapshot,
-	buy: (seedId: string) -> (),
-	buyEgg: () -> (),
+	buy: (seedId: string) -> boolean,
+	buyEgg: () -> boolean,
 	purchase: (what: string) -> ()
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
@@ -73,7 +73,7 @@ local function shopRows(
 			)}`,
 			color = if snapshot.coins >= seed.price then Palette.Hues.Matcha.Night else Palette.Rarity.Common,
 			onTap = function()
-				buy(seed.seedId)
+				return buy(seed.seedId)
 			end,
 		})
 	end
@@ -142,7 +142,7 @@ local function shopRows(
 	return rows
 end
 
-local function sellRows(snapshot: GardenState.Snapshot, sellAll: () -> ()): { ListModal.Row }
+local function sellRows(snapshot: GardenState.Snapshot, sellAll: () -> boolean): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
 	local total = 0
 	local groups: { [string]: { label: string, count: number, value: number } } = {}
@@ -198,21 +198,22 @@ MarketUI.makeHudButton = makeHudButton
 function MarketUI.start()
 	local player = Players.LocalPlayer :: Player
 
-	local function reportResult(result: any, success: string)
+	local function reportResult(result: any, success: string): boolean
 		Toast.show(if result.ok then success else (result.reason or "that did not work"))
+		return result.ok == true
 	end
 
-	local function sellAll()
+	local function sellAll(): boolean
 		local result = GardenState.call("sellAll")
-		reportResult(result, `Sold {result.count} fruit for {result.total} coins!`)
+		return reportResult(result, `Sold {result.count} fruit for {result.total} coins!`)
 	end
-	local function buy(seedId: string)
+	local function buy(seedId: string): boolean
 		local result = GardenState.call("buy", seedId)
-		reportResult(result, `Bought {seedName(seedId)} for {result.price}`)
+		return reportResult(result, `Bought {seedName(seedId)} for {result.price}`)
 	end
-	local function buyEgg()
+	local function buyEgg(): boolean
 		local result = GardenState.call("buyEgg")
-		reportResult(result, `Bought a Spirit Egg for {result.price}. Hatch it in Spirits`)
+		return reportResult(result, `Bought a Spirit Egg for {result.price}. Hatch it in Spirits`)
 	end
 
 	-- Robux items. A developer product is bought through Roblox's own purchase window; the server grants it (see

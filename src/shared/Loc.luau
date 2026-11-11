@@ -25,6 +25,8 @@ local EXACT: { [string]: string } = {
 	["New Gift Box! Open it in Park"] = "新しいギフトボックス！ パークで開けよう",
 	["Harvest your first fruit"] = "はじめて実を収穫しよう",
 	["Hatch your first spirit"] = "はじめてスピリットをかえそう",
+	["Become close friends with a spirit"] = "スピリットと、なかよしになろう",
+	["Become best friends with a spirit"] = "スピリットと、いちばんの友だちになろう",
 	["no gift box"] = "ギフトボックスがありません",
 	["nothing left to find"] = "見つけるものが、もうありません",
 	["unknown lot"] = "その区画が見つかりません",
@@ -244,6 +246,8 @@ local TEMPLATES: { { string } } = {
 	{ "Find {} book entries", "図鑑を {1} 個、見つけよう" },
 	{ "Have {} spirits", "スピリットを {1} 匹、そろえよう" },
 	{ "Reach garden level {}", "ガーデンレベル {1} になろう" },
+	{ "{} likes you more!", "{1} が、もっとなついたよ！" },
+	{ "Pet your spirits {} times", "スピリットを {1} 回、なでよう" },
 	-- spirits' effects
 	{ ", mutations x{}", "、変異率 x{1}" },
 	{ ", your tends grow x{}", "、自分の世話の成長 x{1}" },
