@@ -56,7 +56,7 @@ local CORE: { [string]: { size: number, color: (Look) -> Color3 } } = {
 		end,
 	},
 	Sprout = {
-		size = 0.9,
+		size = 0.6,
 		color = function(look)
 			return look.color
 		end,
@@ -80,7 +80,9 @@ local CORE: { [string]: { size: number, color: (Look) -> Color3 } } = {
 		end,
 	},
 }
-local STEM_HEIGHT: { [string]: number } = { Seed = 0, Sprout = 2, Sapling = 4.5, Bloom = 7, Fruit = 6 }
+local STEM_HEIGHT: { [string]: number } = { Seed = 0, Sprout = 2.2, Sapling = 4.4, Bloom = 6.6, Fruit = 5.6 }
+local SOIL = hex("#5B3E2B")
+local LOOK_VERSION = 3 -- bump when the shapes change, so plants already in the world are redrawn
 
 local function part(folder: Instance, size: Vector3, cframe: CFrame, color: Color3, neon: boolean?): Part
 	local p = Instance.new("Part")
@@ -111,6 +113,28 @@ local function rod(folder: Instance, from: Vector3, to: Vector3, width: number, 
 	return part(folder, Vector3.new(width, width, length), CFrame.lookAt((from + to) / 2, to), color, neon)
 end
 
+-- A small number from the seed's name: every kind leans and turns its leaves its own way.
+local function hashOf(seedId: string): number
+	local h = 0
+	for i = 1, #seedId do
+		h = (h * 31 + string.byte(seedId, i)) % 100003
+	end
+	return h
+end
+
+-- How far the top of the stem leans away from straight up (horizontal offset), so a plant is not a ruler.
+local function leanOf(seedId: string, height: number): Vector3
+	local h = hashOf(seedId)
+	local angle = math.rad((h * 37) % 360)
+	local amount = (0.05 + (h % 7) / 100) * height
+	return Vector3.new(math.cos(angle) * amount, 0, math.sin(angle) * amount)
+end
+
+-- A point on the stem: t = 0 at the soil, 1 at the top. The lean grows towards the top, like a stem bending.
+local function stemPoint(ground: Vector3, lean: Vector3, height: number, t: number): Vector3
+	return ground + Vector3.new(lean.X * t * t, height * t, lean.Z * t * t)
+end
+
 function PlantLook.clear(folder: Instance)
 	folder:ClearAllChildren()
 	folder:SetAttribute("LookKey", nil)
@@ -133,9 +157,10 @@ function PlantLook.apply(
 	local coreDef = CORE[stage] or CORE.Seed
 	local coreSize = coreDef.size * scale
 	local stemHeight = (STEM_HEIGHT[stage] or 0) * scale
-	local coreCenter = ground + Vector3.new(0, stemHeight + coreSize / 2, 0)
+	local lean = leanOf(seedId, stemHeight)
+	local coreCenter = ground + lean + Vector3.new(0, stemHeight + coreSize / 2, 0)
 	if stage == "Seed" then
-		coreCenter = ground + Vector3.new(0, coreSize / 2, 0)
+		coreCenter = ground + Vector3.new(0, coreSize / 2 + 0.1 * scale, 0)
 	end
 
 	core.Shape = Enum.PartType.Ball
@@ -196,7 +221,7 @@ function PlantLook.apply(
 		})
 	end
 
-	local key = `{seedId}|{stage}|{stars}|{mutation or ""}`
+	local key = `{LOOK_VERSION}|{seedId}|{stage}|{stars}|{mutation or ""}`
 	if folder:GetAttribute("LookKey") == key then
 		return
 	end
@@ -204,32 +229,86 @@ function PlantLook.apply(
 	folder:SetAttribute("LookKey", key)
 
 	local s = scale
-	-- stem
-	if stemHeight > 0 then
-		local width = (if stage == "Sprout" then 0.25 elseif stage == "Fruit" then 0.8 else 0.45) * s
-		part(
-			folder,
-			Vector3.new(width, width, stemHeight),
-			CFrame.lookAt(ground + Vector3.new(0, stemHeight / 2, 0), ground + Vector3.new(0, stemHeight, 0)),
-			STEM
-		)
+	local seedHash = hashOf(seedId)
+	local turn = (seedHash % 100) / 100 * math.pi * 2 -- where the first leaf points
+
+	-- soil heaped round the foot of the plant (and over the seed itself)
+	do
+		local width = (if stage == "Seed" then 2.0 elseif stage == "Sprout" then 1.7 else 1.4) * s
+		ellipsoid(folder, Vector3.new(width, 0.6 * s, width), CFrame.new(ground + Vector3.new(0, 0.05 * s, 0)), SOIL)
 	end
-	-- leaves: pairs along the stem
-	local leafPairs = if stage == "Sprout" then 1 elseif stage == "Sapling" then 2 else 3
-	if stage ~= "Seed" then
-		for i = 1, leafPairs do
-			local y = stemHeight * (0.3 + 0.28 * (i - 1)) + 0.2 * s
-			local leafSize = (if stage == "Sprout" then 0.9 else 1.5) * s
-			for side = -1, 1, 2 do
-				local pos = ground + Vector3.new(side * leafSize * 0.55, y, (i % 2 == 0 and 0.2 or -0.2) * s)
-				ellipsoid(
-					folder,
-					Vector3.new(leafSize, leafSize * 0.22, leafSize * 0.55),
-					CFrame.new(pos) * CFrame.Angles(0, 0, side * math.rad(-22)),
-					LEAF
-				)
-			end
+
+	-- the stem: a few rods along a gently bending line, thinner towards the top
+	if stemHeight > 0 then
+		local segments = if stage == "Sprout" then 2 else 4
+		local base = (if stage == "Sprout" then 0.3 elseif stage == "Fruit" then 0.85 else 0.55) * s
+		for i = 1, segments do
+			local from = stemPoint(ground, lean, stemHeight, (i - 1) / segments)
+			local to = stemPoint(ground, lean, stemHeight, i / segments)
+			local width = base * (1 - 0.35 * (i - 1) / segments)
+			rod(folder, from - Vector3.new(0, 0.05 * s, 0), to + Vector3.new(0, 0.05 * s, 0), width, STEM)
 		end
+	end
+
+	-- leaves, one by one up the stem and turned round it (lower leaves bigger, they droop; upper ones point up)
+	if stage == "Sprout" then
+		-- two round seed leaves, opposite each other
+		local top = stemPoint(ground, lean, stemHeight, 1)
+		for side = 0, 1 do
+			local angle = turn + side * math.pi
+			local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+			ellipsoid(
+				folder,
+				Vector3.new(1.15 * s, 0.16 * s, 0.8 * s),
+				CFrame.new(top + dir * 0.6 * s - Vector3.new(0, 0.1 * s, 0))
+					* CFrame.Angles(0, -angle, 0)
+					* CFrame.Angles(0, 0, math.rad(16)),
+				LEAF
+			)
+		end
+	elseif stage ~= "Seed" then
+		local count = if stage == "Sapling" then 5 elseif stage == "Bloom" then 6 else 7
+		local biggest = (if stage == "Sapling" then 2.4 else 3.2) * s
+		for i = 1, count do
+			local t = 0.18 + 0.66 * (i - 1) / (count - 1)
+			local angle = turn + i * 2.39996 -- the golden angle: leaves never line up
+			local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+			local length = biggest * (1.1 - 0.5 * t)
+			-- low leaves droop, high leaves reach up; each is a fat oval that is cupped a little (thick enough to
+			-- show from the side)
+			local pitch = math.rad(-28 + 62 * t)
+			ellipsoid(
+				folder,
+				Vector3.new(length, 0.42 * s, length * 0.62),
+				CFrame.new(stemPoint(ground, lean, stemHeight, t) + dir * length * 0.48)
+					* CFrame.Angles(0, -angle, 0)
+					* CFrame.Angles(0, 0, pitch),
+				if i % 2 == 0 then LEAF else STEM
+			)
+		end
+	end
+	-- the bud of a sapling has a green cup of two small leaves round it
+	if stage == "Sapling" then
+		for side = 0, 1 do
+			local angle = turn + side * math.pi
+			local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+			ellipsoid(
+				folder,
+				Vector3.new(1.1 * s, 0.2 * s, 0.6 * s),
+				CFrame.new(coreCenter - Vector3.new(0, coreSize * 0.35, 0) + dir * coreSize * 0.4)
+					* CFrame.Angles(0, -angle, 0)
+					* CFrame.Angles(0, 0, math.rad(50)),
+				LEAF
+			)
+		end
+	elseif stage == "Bloom" then
+		-- the flower sits in a green cup
+		ellipsoid(
+			folder,
+			Vector3.new(coreSize * 0.9, coreSize * 0.5, coreSize * 0.9),
+			CFrame.new(coreCenter - Vector3.new(0, coreSize * 0.55, 0)),
+			LEAF
+		)
 	end
 
 	local c = look.count
