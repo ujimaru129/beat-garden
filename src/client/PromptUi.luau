@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 local UserInputService = game:GetService("UserInputService")
 
 local UiTheme = require(script.Parent.UiTheme)
@@ -82,6 +83,7 @@ function PromptUi.start()
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	local current: ProximityPrompt? = nil
+	local lastKey = ""
 
 	-- The nearest prompt that is on screen is the one the button stands for.
 	local function nearest(): ProximityPrompt?
@@ -130,10 +132,24 @@ function PromptUi.start()
 		keyChip.Visible = hasKey
 		keyChip.Text = if hasKey then prompt.KeyboardKeyCode.Name else ""
 		local left = if hasKey then 56 else 18
-		action.Position = UDim2.fromOffset(left, 6)
-		action.Size = UDim2.new(1, -left - 12, 0, 30)
-		object.Position = UDim2.fromOffset(left, 34)
-		object.Size = UDim2.new(1, -left - 12, 0, 20)
+		-- The size is worked out again only when the text changes.
+		local key = `{prompt.ActionText}|{prompt.ObjectText}|{left}`
+		if key ~= lastKey then
+			lastKey = key
+			-- The button grows with its text (between 300 and 560 px wide); past that the text gets smaller.
+			local actionWidth =
+				TextService:GetTextSize(prompt.ActionText, 24, Enum.Font.GothamBlack, Vector2.new(2000, 40)).X
+			local objectWidth =
+				TextService:GetTextSize(prompt.ObjectText, 15, Enum.Font.GothamMedium, Vector2.new(2000, 40)).X
+			local width = math.clamp(left + math.max(actionWidth, objectWidth) + 28, 300, 560)
+			button.Size = UDim2.fromOffset(width, 62)
+			local room = width - left - 28
+			action.TextSize = if actionWidth > room then math.max(16, math.floor(24 * room / actionWidth)) else 24
+			action.Position = UDim2.fromOffset(left, 6)
+			action.Size = UDim2.new(1, -left - 12, 0, 30)
+			object.Position = UDim2.fromOffset(left, 34)
+			object.Size = UDim2.new(1, -left - 12, 0, 20)
+		end
 		action.Text = prompt.ActionText
 		object.Text = prompt.ObjectText
 	end)
