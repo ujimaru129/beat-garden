@@ -10,6 +10,8 @@ Beat Garden
 
 ## 説明文（英語・本文。1000文字まで）
 
+場所：Creator Hub → 作品 → Beat Garden →「ゲームの詳細」→「詳細」（ソース言語が英語なので、ここは英語）。日本語は、「多言語化 → 翻訳 → 情報 → 詳細」に貼る。
+
 ```text
 Plant music seeds, play the beat, and watch your garden bloom! 🌱🎵
 
@@ -20,13 +22,18 @@ Walk up to a plant and play a short rhythm run to grow it. Better timing = faste
 Perfect streaks make fruit mutate: Film, Vapor, even Golden Hour. Fill your Book!
 
 🐾 BEAT SPIRITS
-Hatch headphone-wearing spirits that help you grow, mutate and sell.
+Hatch headphone-wearing spirits. They wander your garden, love being petted, and help you grow, mutate and sell.
+
+🎡 YOUR OWN PARK
+Clear goals to win Gift Boxes and build your own amusement park: ferris wheels, sky coasters and more.
 
 🏝️ GROW YOUR ISLAND
 Unlock plots, level up to open new seeds, and master seeds for bigger plants.
 
 ⚡ HOURLY BPM RUSH
 Every hour a music genre rushes and its seeds mutate more. Night brings the neon show!
+
+📅 Daily missions and login bonuses keep the garden growing.
 
 🏆 Climb the global rankings, trade with friends, and make the loudest garden on the server.
 
@@ -44,8 +51,11 @@ Free to play.
 🌈 変異を集めよう
 Perfect が続くと実が変異！Film、Vapor、Golden Hour。図鑑をぜんぶ埋めよう。
 
-🐾 ビートスピリット
-ヘッドホンをつけた相棒を、卵からかえそう。育ち方や変異、売値を助けてくれる。
+🐾 スピリットと遊ぶ
+ヘッドホンをつけた相棒を、卵からかえそう。庭を歩き回って、なでるとなかよしに。名前もつけられるよ。
+
+🎡 自分の遊園地
+目標をクリアして、ギフトボックスをゲット。観覧車や空中ジェットコースターで、自分だけのパークを作ろう。
 
 🏝️ 島を育てる
 区画を増やして、レベルで新しいタネを解放。タネをマスターして、もっと大きく育てよう。
@@ -53,12 +63,14 @@ Perfect が続くと実が変異！Film、Vapor、Golden Hour。図鑑をぜん�
 ⚡ 毎時の BPM Rush
 1時間ごとにジャンルが変わって、そのジャンルが好きなタネが変異しやすくなる。夜はネオンのショー！
 
+📅 毎日のミッションとログインボーナスで、毎日たのしい。
+
 🏆 ランキングで競って、友だちと交換して、いちばんにぎやかな庭にしよう。
 
 基本プレイ無料。
 ```
 
-（Creator Hub の説明欄は1000文字が上限。英語は 719 文字、日本語は 361 文字。）
+（Creator Hub の説明欄は1000文字が上限。英語は 944 文字、日本語は 492 文字。）
 
 ## タグ・ジャンル
 
