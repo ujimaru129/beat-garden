@@ -67,25 +67,33 @@ ASSET_IDS = {
 DIFFICULTY = {
     "Easy": {"per_beat": 0.65, "min_gap_beats": 0.9, "min_gap_ms": 380, "grid": {"beat": 1.0}, "max_jump": 3},
     "Normal": {
-        "per_beat": 1.1,
+        "per_beat": 1.3,
         "min_gap_beats": 0.45,
         "min_gap_ms": 200,
         "grid": {"beat": 1.0, "eighth": 0.5},
         "grid_tol": 0.16,
         "burst_cooldown_beats": 1.5,
-        "burst_max_run": 1,
+        "burst_max_run": 2,
         "max_jump": 2,
     },
     "Hard": {
-        "per_beat": 1.7,
+        "per_beat": 2.0,
         "min_gap_beats": 0.45,
-        "min_gap_ms": 165,
-        "grid": {"beat": 1.0, "eighth": 0.6, "sixteenth": 0.3},
+        "min_gap_ms": 150,
+        "grid": {"beat": 1.0, "eighth": 0.6, "sixteenth": 0.35},
         "grid_tol": 0.16,
-        # quick notes (about 200 ms apart) come in bursts of at most four notes, then a rest of a beat
-        "burst_cooldown_beats": 1.0,
-        "burst_max_run": 3,
+        # quick notes (about 200 ms apart) come in bursts of at most five notes, then a short rest
+        "burst_cooldown_beats": 0.6,
+        "burst_max_run": 4,
         "max_jump": 2,
+    },
+}
+
+
+# Per-song changes to the settings above, found by playing: a very fast song needs a lighter chart.
+OVERRIDES = {
+    "blue_samurai": {
+        "Hard": {"per_beat": 1.6, "burst_max_run": 2, "burst_cooldown_beats": 1.0, "min_gap_ms": 165},
     },
 }
 
@@ -254,7 +262,10 @@ def main() -> None:
     else:
         segs = pick_segments(y, beats, float(info["joinSeconds"]), int(seg_arg), onsets)
     out_segments = []
-    picked = {name: [select_onsets(onsets, beats, a, b, cfg) for (_, _, a, b) in segs] for name, cfg in DIFFICULTY.items()}
+    def config_for(name: str) -> dict:
+        return {**DIFFICULTY[name], **OVERRIDES.get(song_id, {}).get(name, {})}
+
+    picked = {name: [select_onsets(onsets, beats, a, b, config_for(name)) for (_, _, a, b) in segs] for name in DIFFICULTY}
     # lane thresholds from the notes actually chosen, so all four lanes are used about equally
     edges = {
         name: np.percentile([o["centroid"] for seg in picked[name] for o in seg], [25, 50, 75]) for name in DIFFICULTY

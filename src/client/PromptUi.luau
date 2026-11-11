@@ -42,8 +42,11 @@ function PromptUi.start()
 	button.Text = ""
 	button.AutoButtonColor = false
 	button.Parent = gui
+	-- The text colours follow the time of day (set again below, once the labels exist).
+	local restyleText: () -> () = function() end
 	UiTheme.watch(function()
 		UiTheme.styleButton(button, UiTheme.get(), "Matcha", 16)
+		restyleText()
 	end)
 
 	local keyChip = Instance.new("TextLabel")
@@ -80,6 +83,20 @@ function PromptUi.start()
 	object.TextTruncate = Enum.TextTruncate.AtEnd
 	object.ZIndex = 5
 	object.Parent = button
+	-- By day: dark text on the light button. By night the button is dark, so the text is white with a dark edge.
+	restyleText = function()
+		local night = UiTheme.get().night
+		local main = if night then Color3.new(1, 1, 1) else Color3.fromRGB(40, 30, 70)
+		action.TextColor3 = main
+		object.TextColor3 = main
+		object.TextTransparency = if night then 0.05 else 0.2
+		for _, label in { action, object } do
+			label.TextStrokeColor3 = Color3.fromRGB(20, 10, 50)
+			label.TextStrokeTransparency = if night then 0.35 else 1
+		end
+		keyChip.TextColor3 = Color3.fromRGB(40, 30, 70)
+	end
+	restyleText()
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	local current: ProximityPrompt? = nil
