@@ -42,6 +42,8 @@ GENRES = {
     "blue_samurai": "Japan",
     "shinjuku_deep_romance": "Pop",
 }
+# Songs cut short (ms): the audio after this is not played and no note is placed in it.
+CUT_MS = {"kamikaze": 88000}
 OFFSETS_MS = {"pastel_trip": -25, "naniwa_march": -40}
 # The beat tracker sometimes locks onto the off-beat. A fraction of a beat to move the tracked beats later, found by
 # looking at where the kick drum lands in the grid (0.5 = the kick sits half a beat after the tracked beat).
@@ -50,7 +52,7 @@ ASSET_IDS = {
     "kabuki_dance": "102174208355987",
     "dard_aur_dhamaka": "76576411777923",
     "pastel_trip": "86433689428068",
-    "kamikaze": "131155520574193",
+    "kamikaze": "76496375818884",
     "gorilla_glue": "115753003413703",
     "fly_me_to_the_saitama": "127786101931228",
     "metropolitan_expressway": "81016210615436",
@@ -92,6 +94,11 @@ DIFFICULTY = {
 
 # Per-song changes to the settings above, found by playing: a very fast song needs a lighter chart.
 OVERRIDES = {
+    "kamikaze": {
+        # fast and busy, and many hits between the beats: keep to the beat, with only some of the others
+        "Normal": {"grid": {"beat": 1.0, "eighth": 0.3}, "grid_tol": 0.14, "per_beat": 1.5, "max_offbeat_ratio": 0.3},
+        "Hard": {"grid": {"beat": 1.0, "eighth": 0.5, "sixteenth": 0.2}, "grid_tol": 0.14, "per_beat": 2.3, "max_offbeat_ratio": 0.4},
+    },
     "blue_samurai": {
         "Hard": {"per_beat": 1.6, "burst_max_run": 2, "burst_cooldown_beats": 1.0, "min_gap_ms": 165},
     },
@@ -199,6 +206,16 @@ def select_onsets(onsets, beats, a: float, b: float, cfg: dict):
                 taken.append(o)
                 got += 1
     taken.sort(key=lambda o: o["t"])
+    # Songs that hit a lot between the beats: keep the notes on the beat, and only as many of the others as this share
+    # of all notes (the strongest ones).
+    ratio = cfg.get("max_offbeat_ratio")
+    if ratio is not None:
+        tol = cfg.get("grid_tol", 0.11)
+        on = [o for o in taken if grid_class(o["t"], beats, tol) == "beat"]
+        off = [o for o in taken if grid_class(o["t"], beats, tol) != "beat"]
+        room = int(len(on) * ratio / (1 - ratio))
+        off.sort(key=lambda o: -o["strength"])
+        taken = sorted(on + off[:room], key=lambda o: o["t"])
     cooldown = cfg.get("burst_cooldown_beats")
     if cooldown:
         # Quick notes (closer than 0.6 beat) come in short bursts: at most `burst_max_run` quick gaps in a row, then
@@ -257,8 +274,9 @@ def main() -> None:
         beats = beats[beats < len(y) / m.SR - 0.05]
     onsets, _ = detect_onsets(y)
 
+    cut_ms = CUT_MS.get(song_id)
     if seg_arg == "full":
-        segs = [(0.0, 0, 0.0, len(y) / m.SR)]
+        segs = [(0.0, 0, 0.0, (cut_ms / 1000 if cut_ms else len(y) / m.SR))]
     else:
         segs = pick_segments(y, beats, float(info["joinSeconds"]), int(seg_arg), onsets)
     out_segments = []
@@ -266,6 +284,16 @@ def main() -> None:
         return {**DIFFICULTY[name], **OVERRIDES.get(song_id, {}).get(name, {})}
 
     picked = {name: [select_onsets(onsets, beats, a, b, config_for(name)) for (_, _, a, b) in segs] for name in DIFFICULTY}
+    # A note must have sound under it: drop notes that fall in a silence (a break, the tail after the last hit).
+    quiet_level = 0.08 * float(np.sqrt((y**2).mean()))
+
+    def audible(t: float) -> bool:
+        seg = y[max(0, int((t - 0.02) * m.SR)) : int((t + 0.12) * m.SR)]
+        return len(seg) > 0 and float(np.sqrt((seg**2).mean())) >= quiet_level
+
+    picked = {name: [[o for o in seg if audible(o["t"])] for seg in lst] for name, lst in picked.items()}
+    if cut_ms:
+        picked = {name: [[o for o in seg if o["t"] * 1000 <= cut_ms - 60] for seg in lst] for name, lst in picked.items()}
     # lane thresholds from the notes actually chosen, so all four lanes are used about equally
     edges = {
         name: np.percentile([o["centroid"] for seg in picked[name] for o in seg], [25, 50, 75]) for name in DIFFICULTY
@@ -292,7 +320,8 @@ def main() -> None:
         f"\taudioAssetId = {json.dumps(ASSET_IDS.get(song_id))} :: string?, -- Creator Hub asset id of the uploaded short edit"
         if song_id in ASSET_IDS
         else "\taudioAssetId = nil :: string?, -- Creator Hub asset id once the short edit is uploaded",
-        f"\tdurationMs = {int(round(info['durationSeconds'] * 1000))},",
+        f"\tdurationMs = {cut_ms or int(round(info['durationSeconds'] * 1000))},",
+        *([f"\taudioEndMs = {cut_ms} :: number?, -- the song is cut here"] if cut_ms else []),
         "\tbeatsMs = { " + ", ".join(str(int(round(b * 1000))) for b in beats) + " }, -- tracked beats, for the metronome",
         "\tsegments = {",
     ]

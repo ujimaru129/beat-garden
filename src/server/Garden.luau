@@ -779,6 +779,7 @@ local function tendBegin(s: Session, payload: unknown): any
 		beatsMs = picked.beatsMs,
 		songName = picked.name,
 		audioAssetId = picked.audioAssetId,
+		audioEndMs = picked.audioEndMs,
 		offsetMs = picked.offsetMs,
 		favorite = (s.pending :: Pending).favorite,
 		difficulty = difficulty,

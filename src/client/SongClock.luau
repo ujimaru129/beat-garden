@@ -7,6 +7,8 @@ local ContentProvider = game:GetService("ContentProvider")
 local SoundService = game:GetService("SoundService")
 
 local LOAD_TIMEOUT_S = 6
+local VOLUME = 0.8
+local FADE_OUT_S = 3 -- the last seconds fade out, so a song cut off in the middle of a phrase ends softly
 
 local SongClock = {}
 
@@ -17,11 +19,12 @@ export type Clock = {
 }
 
 -- Loads the audio. Yields until it is ready; returns nil when it cannot be loaded in time.
-function SongClock.create(assetId: string, firstNoteMs: number, leadInMs: number): Clock?
+-- `endMs`: cut the song here (the audio stops with a quick fade; `isDone` is true from then on).
+function SongClock.create(assetId: string, firstNoteMs: number, leadInMs: number, endMs: number?): Clock?
 	local sound = Instance.new("Sound")
 	sound.Name = "SongAudio"
 	sound.SoundId = `rbxassetid://{assetId}`
-	sound.Volume = 0.8
+	sound.Volume = VOLUME
 	sound.Parent = SoundService
 
 	local loaded = false
@@ -59,6 +62,9 @@ function SongClock.create(assetId: string, firstNoteMs: number, leadInMs: number
 	local clock = {} :: Clock
 	clock.isDone = function(): boolean
 		-- Also stops waiting if playback never started or never reported its end.
+		if endMs and last >= endMs then
+			return true
+		end
 		return ended or (os.clock() - t0) * 1000 + startMs > length * 1000 + 3000
 	end
 	clock.getTimeMs = function(): number
@@ -71,6 +77,15 @@ function SongClock.create(assetId: string, firstNoteMs: number, leadInMs: number
 			t = sound.TimePosition * 1000
 		end
 		last = math.max(last, t) -- never run backwards
+		if playing then
+			local remaining = length - sound.TimePosition
+			local volume = math.clamp(remaining / FADE_OUT_S, 0, 1)
+			if endMs then
+				-- a cut song fades out in a quarter of a second before the cut, and is silent after it
+				volume = math.min(volume, math.clamp((endMs - last) / 250, 0, 1))
+			end
+			sound.Volume = VOLUME * volume
+		end
 		return last
 	end
 	clock.stop = function()

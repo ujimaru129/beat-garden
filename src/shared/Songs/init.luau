@@ -21,6 +21,7 @@ export type SongData = {
 	bpm: number,
 	offsetMs: number,
 	audioAssetId: string?,
+	audioEndMs: number?, -- the song is cut here (the audio after it is not played)
 	durationMs: number,
 	beatsMs: { number }, -- tracked beat times (ms), for the metronome until real audio plays
 	segments: { SegmentData },
@@ -35,6 +36,7 @@ export type Pick = {
 	beatsMs: { number }, -- beats inside the segment (and the lead-in before it)
 	offsetMs: number,
 	audioAssetId: string?,
+	audioEndMs: number?,
 }
 
 local Songs = {}
@@ -89,6 +91,7 @@ function Songs.pick(songId: string, difficulty: string, rng: Random?): Pick?
 		beatsMs = beats,
 		offsetMs = song.offsetMs,
 		audioAssetId = song.audioAssetId,
+		audioEndMs = song.audioEndMs,
 	}
 end
 

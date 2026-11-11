@@ -105,6 +105,7 @@ function TendFlow.start()
 			bpm = info.bpm,
 			beatsMs = info.beatsMs,
 			audioAssetId = info.audioAssetId,
+			audioEndMs = info.audioEndMs,
 			offsetMs = info.offsetMs,
 			difficulty = info.difficulty,
 		}, function(summary)

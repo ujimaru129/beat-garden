@@ -18,6 +18,7 @@ export type Run = {
 	bpm: number,
 	beatsMs: { number }?, -- real beat times; the metronome ticks on these instead of a fixed bpm
 	audioAssetId: string?, -- uploaded audio; when set it plays and drives the clock
+	audioEndMs: number?, -- the song is cut here: the audio stops (softly) and the run may end
 	offsetMs: number?, -- shifts the chart against the audio
 	difficulty: Difficulty.Name,
 }
@@ -65,7 +66,7 @@ function RhythmRunner.play(run: Run, onFinished: (summary: RhythmEngine.Summary)
 		-- Real audio: load it, then use its position as the clock. Without it, the metronome plays.
 		task.spawn(function()
 			local leadIn = 2000
-			clock = SongClock.create(assetId, run.segment.notes[1][2], leadIn)
+			clock = SongClock.create(assetId, run.segment.notes[1][2], leadIn, run.audioEndMs)
 			if clock then
 				options.getSongTimeMs = clock.getTimeMs
 				options.isAudioDone = clock.isDone
