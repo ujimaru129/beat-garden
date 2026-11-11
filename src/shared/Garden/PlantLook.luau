@@ -74,7 +74,7 @@ local CORE: { [string]: { size: number, color: (Look) -> Color3 } } = {
 		end,
 	},
 	Fruit = {
-		size = 4.2,
+		size = 3,
 		color = function(look)
 			return look.color
 		end,
@@ -82,7 +82,7 @@ local CORE: { [string]: { size: number, color: (Look) -> Color3 } } = {
 }
 local STEM_HEIGHT: { [string]: number } = { Seed = 0, Sprout = 2.2, Sapling = 4.4, Bloom = 6.6, Fruit = 5.6 }
 local SOIL = hex("#5B3E2B")
-local LOOK_VERSION = 3 -- bump when the shapes change, so plants already in the world are redrawn
+local LOOK_VERSION = 4 -- bump when the shapes change, so plants already in the world are redrawn
 
 local function part(folder: Instance, size: Vector3, cframe: CFrame, color: Color3, neon: boolean?): Part
 	local p = Instance.new("Part")
@@ -344,47 +344,55 @@ function PlantLook.apply(
 	elseif stage == "Fruit" then
 		-- what makes this fruit this fruit
 		local r = coreSize / 2
+		-- The fruit is the heart of a flower head, which is drawn in the seed's style. Petals take the fruit's colour
+		-- (mutation, overripe and all) a little lighter, so a mutated plant looks mutated all over.
+		local tint = core.Color:Lerp(Color3.new(1, 1, 1), 0.3)
+		local glowy = core.Material == Enum.Material.Neon
+		local function petal(angle: number, length: number, width: number, pitchDeg: number, y: number, color: Color3)
+			local pitch = math.rad(pitchDeg)
+			local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+			local center = coreCenter
+				+ Vector3.new(0, y, 0)
+				+ dir * (length / 2 * math.cos(pitch))
+				+ Vector3.new(0, length / 2 * math.sin(pitch), 0)
+			ellipsoid(
+				folder,
+				Vector3.new(length, 0.5 * s, width),
+				CFrame.new(center) * CFrame.Angles(0, -angle, 0) * CFrame.Angles(0, 0, pitch),
+				color,
+				glowy
+			)
+		end
 		if look.style == "petal" then
-			-- a little leaf cap on top
-			for i = 1, 3 do
-				local angle = (i - 1) / 3 * math.pi * 2 + 0.5
-				ellipsoid(
-					folder,
-					Vector3.new(1.4 * s, 0.25 * s, 0.7 * s),
-					CFrame.new(
-						coreCenter + Vector3.new(math.cos(angle) * r * 0.45, r * 0.92, math.sin(angle) * r * 0.45)
-					) * CFrame.Angles(0, -angle, math.rad(15)),
-					look.accent
-				)
+			-- a layered flower: wide low petals under, upright petals in front of them
+			for i = 1, 6 do
+				petal((i - 1) / 6 * math.pi * 2 + 0.3, 5 * s, 2.7 * s, 18, -r * 0.35, tint)
+			end
+			for i = 1, 6 do
+				petal((i - 1) / 6 * math.pi * 2 + math.pi / 6 + 0.3, 3.6 * s, 2.1 * s, 52, -r * 0.1, look.accent)
 			end
 		elseif look.style == "leaf" then
+			-- a tulip: tall petals curled up into a cup round the fruit
 			for i = 1, c do
-				local angle = (i - 1) / c * math.pi * 2
-				ellipsoid(
-					folder,
-					Vector3.new(2.2 * s, 0.3 * s, 0.8 * s),
-					CFrame.new(
-						coreCenter + Vector3.new(math.cos(angle) * r * 1.05, -r * 0.3, math.sin(angle) * r * 1.05)
-					) * CFrame.Angles(0, -angle, math.rad(25)),
-					look.accent
-				)
+				petal((i - 1) / c * math.pi * 2, 5 * s, 2.2 * s, 74, -r * 0.6, tint)
+			end
+			for i = 1, c do
+				petal((i - 0.5) / c * math.pi * 2, 3.6 * s, 1.8 * s, 62, -r * 0.5, look.accent)
 			end
 		elseif look.style == "bubble" then
-			for i = 1, c do
-				local angle = (i - 1) / c * math.pi * 2
-				local b = (0.5 + 0.2 * (i % 3)) * s
+			-- a hydrangea: a dome of little round blossoms
+			local count = 16
+			for i = 1, count do
+				local y = 1 - (i - 0.5) / count * 1.25 -- from the top down to a little below the middle
+				local ring = math.sqrt(math.max(0, 1 - y * y))
+				local angle = i * 2.39996
+				local b = (0.95 + 0.4 * (i % 3)) * s
 				ellipsoid(
 					folder,
 					Vector3.new(b, b, b),
-					CFrame.new(
-						coreCenter
-							+ Vector3.new(
-								math.cos(angle) * r * 1.25,
-								r * (0.3 + 0.25 * (i % 3)),
-								math.sin(angle) * r * 1.25
-							)
-					),
-					look.accent
+					CFrame.new(coreCenter + Vector3.new(math.cos(angle) * ring, y, math.sin(angle) * ring) * r * 1.45),
+					if i % 2 == 0 then tint else look.accent,
+					glowy
 				)
 			end
 		elseif look.style == "cloud" then
@@ -401,10 +409,21 @@ function PlantLook.apply(
 				)
 			end
 		elseif look.style == "spike" then
-			for i = 1, c do
-				local angle = (i - 1) / c * math.pi * 2
-				local dir = Vector3.new(math.cos(angle) * 0.8, 0.6, math.sin(angle) * 0.8)
-				rod(folder, coreCenter + dir * r * 0.8, coreCenter + dir * r * 1.7, 0.4 * s, look.accent)
+			-- a dandelion / chrysanthemum: many thin rods with a tip, all the way round the top half
+			local count = 18
+			for i = 1, count do
+				local y = 0.9 - (i - 0.5) / count * 1.3
+				local ring = math.sqrt(math.max(0, 1 - y * y))
+				local angle = i * 2.39996
+				local dir = Vector3.new(math.cos(angle) * ring, y, math.sin(angle) * ring)
+				rod(folder, coreCenter + dir * r * 0.7, coreCenter + dir * r * 2.2, 0.22 * s, tint, glowy)
+				ellipsoid(
+					folder,
+					Vector3.new(0.55, 0.55, 0.55) * s,
+					CFrame.new(coreCenter + dir * r * 2.25),
+					look.accent,
+					glowy
+				)
 			end
 		else -- burst: neon rods in every direction, like a firework
 			for i = 1, c do
