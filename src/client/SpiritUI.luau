@@ -23,22 +23,23 @@ local function hearts(bond: number?): string
 	return string.rep("\u{2665}", level) .. string.rep("\u{2661}", Spirits.MaxBondLevel - level)
 end
 
+-- One short line: "Tends every 60s (+6) / mutations x1.3".
 local function effectText(def: Spirits.Def): string
-	local text = Lang.t(`tends the plant every {def.autoCareSeconds}s (+{def.autoCarePoints})`)
+	local text = Lang.t(`Tends every {def.autoCareSeconds}s (+{def.autoCarePoints})`)
 	if def.mutationMult > 1 then
-		text ..= Lang.t(`, mutations x{def.mutationMult}`)
+		text ..= Lang.t(` / mutations x{def.mutationMult}`)
 	end
 	if def.tendMult > 1 then
-		text ..= Lang.t(`, your tends grow x{def.tendMult}`)
+		text ..= Lang.t(` / your tends grow x{def.tendMult}`)
 	end
 	if def.discoveryMult > 1 then
-		text ..= Lang.t(`, new book entries pay x{def.discoveryMult}`)
+		text ..= Lang.t(` / book coins x{def.discoveryMult}`)
 	end
 	if def.sellMult > 1 then
-		text ..= Lang.t(`, sells for x{def.sellMult}`)
+		text ..= Lang.t(` / sells x{def.sellMult}`)
 	end
 	if def.freshMult > 1 then
-		text ..= Lang.t(`, fruit stays fresh x{def.freshMult} longer`)
+		text ..= Lang.t(` / fruit stays fresh x{def.freshMult}`)
 	end
 	return text
 end
@@ -62,16 +63,55 @@ local function rowsFor(
 	if #snapshot.spirits == 0 then
 		table.insert(rows, { text = "You have no spirits yet" })
 	end
+	-- One row per kind ("Koke x3"): the spirits of a kind are shown as the one that counts (the equipped one, else the
+	-- most petted, else the first hatched). Rows: the equipped kind first, then the most petted, then the kind in the
+	-- order of the Spirits list.
+	type Group = { kind: string, best: any, count: number, equipped: boolean, order: number }
+	local groups: { [string]: Group } = {}
+	local order: { Group } = {}
+	local kindOrder: { [string]: number } = {}
+	for index, def in Spirits.List do
+		kindOrder[def.kind] = index
+	end
 	for _, spirit in snapshot.spirits do
-		local def = Spirits.get(spirit.kind)
+		local group = groups[spirit.kind]
+		if not group then
+			group =
+				{ kind = spirit.kind, best = spirit, count = 0, equipped = false, order = kindOrder[spirit.kind] or 99 }
+			groups[spirit.kind] = group
+			table.insert(order, group)
+		end
+		group.count += 1
+		if spirit.id == snapshot.equippedSpirit then
+			group.equipped = true
+			group.best = spirit
+		elseif not group.equipped and (spirit.bond or 0) > (group.best.bond or 0) then
+			group.best = spirit
+		end
+	end
+	table.sort(order, function(a, b)
+		if a.equipped ~= b.equipped then
+			return a.equipped
+		end
+		local aBond, bBond = a.best.bond or 0, b.best.bond or 0
+		if aBond ~= bBond then
+			return aBond > bBond
+		end
+		return a.order < b.order
+	end)
+	for _, group in order do
+		local def = Spirits.get(group.kind)
 		if def then
-			local equipped = spirit.id == snapshot.equippedSpirit
+			local spirit = group.best
+			local equipped = group.equipped
+			local title = Lang.t(if equipped then `Equipped: {def.name.en}` else `Equip {def.name.en}`)
 			table.insert(rows, {
-				text = `{hearts(spirit.bond)} {Lang.t(
-					if equipped then `Equipped: {def.name.en}` else `Equip {def.name.en}`
-				)} - {effectText(def)}`,
+				text = `{hearts(spirit.bond)}  {title}{if group.count > 1 then `  \u{00D7}{group.count}` else ""}\n{effectText(
+					def
+				)}`,
 				color = if equipped then Palette.Hues.Yuzu.Night else nil,
 				selected = equipped,
+				spiritKind = group.kind,
 				onTap = function()
 					return equip(if equipped then nil else spirit.id)
 				end,

@@ -10,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local ScrollThumb = require(script.Parent.ScrollThumb)
+local SpiritModel = require(script.Parent.SpiritModel)
 local Lang = require(script.Parent.Lang)
 local UiTheme = require(script.Parent.UiTheme)
 
@@ -20,6 +21,7 @@ export type Row = {
 	color: Color3?,
 	-- nil = just text. May return true (it worked: the row flashes green) or false (it did not: red).
 	onTap: (() -> boolean?)?,
+	spiritKind: string?, -- draws this spirit (3D) at the left of the row
 	selected: boolean?, -- the chosen one (the equipped spirit ...): drawn lit up with a white frame and a check
 	note: boolean?, -- a long explanation: scaled on its own, and it does not set the common text size
 }
@@ -33,6 +35,8 @@ export type Modal = {
 }
 
 local ROW_HEIGHT = 52
+local ICON_ROW_HEIGHT = 66 -- a row with a spirit at its left
+local ICON_SPACE = 62 -- width the picture takes at the left of the text
 local NOTE_MIN_HEIGHT = 34
 local MAX_TEXT = 26
 local MIN_TEXT = 18 -- smaller than this is hard to read on a phone: longer rows wrap instead
@@ -45,6 +49,34 @@ local function make(className: string, props: { [string]: any }, parent: Instanc
 	end
 	inst.Parent = parent
 	return inst
+end
+
+-- A small 3D picture of a spirit for the left of a row. A ViewportFrame is the costly kind of picture, so the list
+-- only shows the ones that are on screen (see showVisibleIcons).
+local function makeSpiritIcon(kind: string, lit: boolean): ViewportFrame
+	local viewport = Instance.new("ViewportFrame")
+	viewport.Name = "SpiritIcon"
+	viewport.AnchorPoint = Vector2.new(0, 0.5)
+	-- The row's padding pushes children in: this puts the picture at the row's left edge, centred.
+	viewport.Position = UDim2.new(0, -(14 + ICON_SPACE) + 8, 0.5, 0)
+	viewport.Size = UDim2.fromOffset(ICON_SPACE - 8, ICON_SPACE - 8)
+	viewport.BackgroundTransparency = if lit then 0.55 else 0.8
+	viewport.BackgroundColor3 = Color3.new(1, 1, 1)
+	viewport.Ambient = Color3.fromRGB(190, 190, 205)
+	viewport.LightColor = Color3.new(1, 1, 1)
+	viewport.LightDirection = Vector3.new(-0.4, -1, -0.6)
+	viewport.ZIndex = 6
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.5, 0)
+	corner.Parent = viewport
+	local model = SpiritModel.create(kind)
+	model.Parent = viewport
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 30
+	camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.9, -7.2), Vector3.new(0, 1.65, 0))
+	camera.Parent = viewport
+	viewport.CurrentCamera = camera
+	return viewport
 end
 
 -- A coloured flash over a row (the result of tapping it), and a quick squash when it is pressed.
@@ -63,7 +95,8 @@ local function flash(button: TextButton, color: Color3)
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 12)
 	corner.Parent = overlay
-	overlay.Parent = button
+	-- The glass frame behind the text covers the whole row (the button itself has padding).
+	overlay.Parent = button:FindFirstChild("ThemeBg") or button
 	TweenService:Create(overlay, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		BackgroundTransparency = 1,
 	}):Play()
@@ -228,7 +261,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	-- All rows share one text size: the biggest size at which the longest row still fits on one line, but never
 	-- smaller than MIN_TEXT. A row that is still too long wraps onto a second line and its row grows to fit.
 	-- (TextScaled would give every row its own size, so a short name would look bigger than a long one.)
-	local rowButtons: { { button: TextButton, text: string, note: boolean } } = {}
+	local rowButtons: { { button: TextButton, text: string, note: boolean, icon: ViewportFrame? } } = {}
 	-- The server answers a tap and also pushes the new state, which rebuilds the list: the flash must land on the
 	-- row that is there after the rebuild, whichever of the two comes first.
 	local pendingFlash: { index: number, color: Color3, expires: number }? = nil
@@ -240,8 +273,10 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				continue
 			end
 			local size = best
+			local rowWidth = width - (if row.icon then ICON_SPACE else 0)
 			while size > MIN_TEXT do
-				local bounds = TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(width, math.huge))
+				local bounds =
+					TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(rowWidth, math.huge))
 				if bounds.Y <= size * 1.4 then
 					break
 				end
@@ -255,11 +290,27 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			row.button.TextWrapped = true
 			row.button.TextSize = size
 			-- The text area is the row minus the padding above and below (22% each).
-			local bounds = TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(width, math.huge))
+			local rowWidth = width - (if row.icon then ICON_SPACE else 0)
+			local bounds = TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(rowWidth, math.huge))
 			local height = math.ceil(bounds.Y / 0.56)
-			row.button.Size = UDim2.new(1, -8, 0, math.max(if row.note then NOTE_MIN_HEIGHT else ROW_HEIGHT, height))
+			local minimum = if row.note then NOTE_MIN_HEIGHT elseif row.icon then ICON_ROW_HEIGHT else ROW_HEIGHT
+			row.button.Size = UDim2.new(1, -8, 0, math.max(minimum, height))
 		end
 	end
+
+	-- Only the pictures of rows that are on screen are drawn.
+	local function showVisibleIcons()
+		local top = list.AbsolutePosition.Y - 60
+		local bottom = list.AbsolutePosition.Y + list.AbsoluteSize.Y + 60
+		for _, row in rowButtons do
+			local icon = row.icon
+			if icon then
+				local y = row.button.AbsolutePosition.Y
+				icon.Visible = y + row.button.AbsoluteSize.Y >= top and y <= bottom
+			end
+		end
+	end
+	list:GetPropertyChangedSignal("CanvasPosition"):Connect(showVisibleIcons)
 
 	local function close()
 		if not gui.Enabled then
@@ -280,7 +331,10 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			restyle()
 			gui.Enabled = true
 			UiTheme.setBlur("list", true)
-			task.defer(applyTextSize) -- the list has its real size once it is shown
+			task.defer(function()
+				applyTextSize()
+				showVisibleIcons()
+			end) -- the list has its real size once it is shown
 		end,
 		close = close,
 		isOpen = function()
@@ -312,7 +366,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				make("UIPadding", {
 					PaddingTop = UDim.new(0.22, 0),
 					PaddingBottom = UDim.new(0.22, 0),
-					PaddingLeft = UDim.new(0, 14),
+					PaddingLeft = UDim.new(0, if row.spiritKind then 14 + ICON_SPACE else 14),
 					PaddingRight = UDim.new(0, 14),
 				}, button)
 				-- Rows that cannot be tapped are quiet text; tappable ones are neon / candy buttons.
@@ -336,7 +390,15 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 					}, button)
 				end
 				button.InputBegan:Connect(beginDrag)
-				table.insert(rowButtons, { button = button, text = Lang.t(row.text), note = row.note == true })
+				local icon: ViewportFrame? = nil
+				if row.spiritKind then
+					icon = makeSpiritIcon(row.spiritKind, row.selected == true)
+					icon.Parent = button
+				end
+				table.insert(
+					rowButtons,
+					{ button = button, text = Lang.t(row.text), note = row.note == true, icon = icon }
+				)
 				local onTap = row.onTap
 				if onTap then
 					button.Activated:Connect(function()
@@ -357,6 +419,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				end
 			end
 			applyTextSize()
+			task.defer(showVisibleIcons)
 			local pending = pendingFlash
 			if pending and os.clock() < pending.expires then
 				local target = rowButtons[pending.index]
