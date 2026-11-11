@@ -12,12 +12,13 @@ local ListModal = require(script.Parent.ListModal)
 local MarketUI = require(script.Parent.MarketUI)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Park = require(ReplicatedStorage.Shared.Garden.Park)
+local TipsUI = require(script.Parent.TipsUI)
 local Toast = require(script.Parent.Toast)
 local UiTheme = require(script.Parent.UiTheme)
 
 local ParkUI = {}
 
-type View = { kind: "main" } | { kind: "goals" } | { kind: "pick", lotId: string }
+type View = { kind: "main" } | { kind: "goals" } | { kind: "daily" } | { kind: "pick", lotId: string }
 
 local function nameOf(attraction: Park.Attraction): string
 	return if Lang.code == "ja" then attraction.name.ja else attraction.name.en
@@ -118,6 +119,20 @@ function ParkUI.start()
 		else
 			table.insert(rows, { note = true, text = "Gift Boxes come from goals. Reach a goal to get one!" })
 		end
+		local missionsDone = 0
+		for _, mission in snapshot.daily.missions do
+			if mission.claimed then
+				missionsDone += 1
+			end
+		end
+		table.insert(rows, {
+			text = `Daily Missions  {missionsDone}/{#snapshot.daily.missions}`,
+			color = Palette.Hues.Yuzu.Night,
+			onTap = function()
+				view = { kind = "daily" }
+				render(snapshot)
+			end,
+		})
 		local done = 0
 		for _, goal in Park.Goals do
 			if park.claimed[goal.id] then
@@ -167,6 +182,33 @@ function ParkUI.start()
 		return rows
 	end
 
+	local function dailyRows(snapshot: GardenState.Snapshot): { ListModal.Row }
+		local daily = snapshot.daily
+		local rows: { ListModal.Row } = { { text = "Back", onTap = goBack, color = Palette.Hues.Fuji.Night } }
+		table.insert(rows, {
+			note = true,
+			text = `Login streak: {daily.streak} days (every 7th day: a Gift Box)`,
+		})
+		for _, mission in daily.missions do
+			if mission.claimed then
+				table.insert(rows, { text = `\u{2714} {Lang.t(mission.name)}`, color = Palette.Hues.Matcha.Night })
+			else
+				table.insert(rows, { text = `{Lang.t(mission.name)}  ({mission.progress}/{mission.target})` })
+			end
+		end
+		table.insert(rows, {
+			note = true,
+			text = if daily.bonus
+				then "All three done: a Gift Box was added!"
+				else `Each mission pays {daily.missionCoins} coins. Finish all three for a Gift Box`,
+		})
+		table.insert(rows, {
+			note = true,
+			text = `New missions in {math.ceil(daily.secondsLeft / 3600)} hours`,
+		})
+		return rows
+	end
+
 	local function pickRows(snapshot: GardenState.Snapshot, lotId: string): { ListModal.Row }
 		local park = snapshot.park
 		local lot = Park.lot(lotId)
@@ -213,6 +255,9 @@ function ParkUI.start()
 		if current.kind == "goals" then
 			modal.setTitle("Goals")
 			modal.setRows(goalRows(snapshot))
+		elseif current.kind == "daily" then
+			modal.setTitle("Daily Missions")
+			modal.setRows(dailyRows(snapshot))
 		elseif current.kind == "pick" then
 			modal.setTitle("Park")
 			modal.setRows(pickRows(snapshot, current.lotId))
@@ -223,8 +268,38 @@ function ParkUI.start()
 	end
 
 	local lastBoxes: number? = nil
+	local shownNoticeDay = 0
+	local lastClaimed: number? = nil
+	local lastDay = 0
 	GardenState.onChanged(function(snapshot)
 		local boxes = snapshot.park.boxes
+		-- today's login bonus, once per day and session; then a hint about the missions
+		local notice = snapshot.daily.notice
+		if notice and notice.day ~= shownNoticeDay then
+			shownNoticeDay = notice.day
+			Toast.show(
+				if notice.box
+					then `Daily bonus! Day {notice.streak}: +{notice.coins} coins and a Gift Box!`
+					else `Daily bonus! Day {notice.streak}: +{notice.coins} coins`
+			)
+			TipsUI.show("daily")
+		end
+		-- a mission that was just finished
+		local claimed = 0
+		for _, mission in snapshot.daily.missions do
+			if mission.claimed then
+				claimed += 1
+			end
+		end
+		local dayKey = if notice then notice.day else 0
+		if lastClaimed ~= nil and dayKey == lastDay and claimed > lastClaimed then
+			Toast.show(`Mission done! +{snapshot.daily.missionCoins} coins`)
+		end
+		lastClaimed = claimed
+		lastDay = dayKey
+		if boxes > 0 then
+			TipsUI.show("park")
+		end
 		button.Text = Lang.t("Park") .. (if boxes > 0 then ` ({boxes})` else "")
 		if lastBoxes ~= nil and boxes > lastBoxes then
 			Toast.show("New Gift Box! Open it in Park")

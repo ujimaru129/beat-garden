@@ -18,6 +18,9 @@ local tables: { [string]: { [string]: string } } = {
 		tip_star = "Mastery star! Seeds you harvest a lot grow faster, bigger and mutate more",
 		tip_overripe = "Fruit left on the plant gets overripe and sells for less. Harvest it soon!",
 		tip_rush = "BPM Rush! Seeds that love this genre mutate more for a while",
+		tip_park = "Reach goals to get Gift Boxes! Open them in Park to find attractions for your own amusement park",
+		tip_pet = "Your spirits wander the garden. Tap one to pet it, and equip one to have it follow you!",
+		tip_daily = "Daily missions are in Park. Finish all three for a Gift Box, and log in every day for bigger bonuses!",
 	},
 	ja = {
 		tutorial_plant = "自分の植え場に近づいて「植える」をタップ。タネを植えよう",
@@ -31,6 +34,9 @@ local tables: { [string]: { [string]: string } } = {
 		tip_star = "マスタリーの星！たくさん収穫したタネは、早く、大きく育って、変異しやすくなるよ",
 		tip_overripe = "収穫せずに置いた実は、熟しすぎて売値が下がるよ。早めに収穫しよう！",
 		tip_rush = "BPM Rush！このジャンルが好きなタネは、しばらく変異しやすいよ",
+		tip_park = "目標をクリアすると、ギフトボックスがもらえるよ！パークで開けて、自分の遊園地を作ろう",
+		tip_pet = "スピリットは、庭を歩き回るよ。タップしてなでよう。装備した 1 匹は、ついてくるよ！",
+		tip_daily = "デイリーミッションは、パークにあるよ。3 つ達成でギフトボックス！毎日ログインすると、ボーナスが増えるよ",
 	},
 }
 

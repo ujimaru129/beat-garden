@@ -36,6 +36,14 @@ export type Snapshot = {
 	xp: number,
 	level: Progression.LevelInfo,
 	mastery: { [string]: number }, -- seedId -> harvests
+	daily: {
+		streak: number,
+		bonus: boolean, -- the box for all three missions is paid
+		missions: { { id: string, name: string, target: number, progress: number, claimed: boolean } },
+		missionCoins: number,
+		secondsLeft: number,
+		notice: { day: number, streak: number, coins: number, box: boolean }?,
+	},
 	park: {
 		boxes: number, -- gift boxes not opened yet
 		items: { [string]: boolean },

@@ -6,6 +6,7 @@
 local Collection = require(script.Parent.Parent.Garden.Collection)
 local Growth = require(script.Parent.Parent.Garden.Growth)
 local Mutations = require(script.Parent.Parent.Garden.Mutations)
+local Daily = require(script.Parent.Parent.Garden.Daily)
 local Park = require(script.Parent.Parent.Garden.Park)
 local Plots = require(script.Parent.Parent.Garden.Plots)
 local Products = require(script.Parent.Parent.Garden.Products)
@@ -39,6 +40,7 @@ export type Data = {
 	equippedSpirit: string?, -- id of the equipped spirit
 	settings: { latencyMs: number },
 	stats: { tends: number, perfects: number, harvests: number, maxCombo: number, pats: number },
+	daily: Daily.State, -- the daily login bonus and missions (Garden/Daily)
 	park: Park.State, -- the amusement park (Garden/Park): goals paid, boxes, items, what stands where
 	collection: Collection.Book, -- discovered seed x variant entries (Garden/Collection)
 	xp: number, -- garden XP (Garden/Progression)
@@ -78,6 +80,7 @@ function PlayerData.new(): Data
 		equippedSpirit = nil,
 		settings = { latencyMs = 0 },
 		stats = { tends = 0, perfects = 0, harvests = 0, maxCombo = 0, pats = 0 },
+		daily = Daily.newState(),
 		park = Park.newState(),
 		collection = {},
 		xp = 0,
@@ -249,6 +252,7 @@ function PlayerData.sanitize(raw: any): Data
 	data.restockShift = math.floor(num(raw.restockShift, 0, 0, 1e6))
 
 	data.park = Park.sanitize(raw.park)
+	data.daily = Daily.sanitize(raw.daily)
 
 	-- Data saved before the tutorial existed: anyone who already has progress skips it.
 	local hasProgress = next(data.plots) ~= nil or data.coins > 0 or data.stats.harvests > 0

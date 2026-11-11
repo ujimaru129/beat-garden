@@ -18,6 +18,8 @@ local EXACT: { [string]: string } = {
 	["Goals"] = "目標",
 	["Back"] = "もどる",
 	["Names"] = "名前",
+	["Daily Missions"] = "デイリーミッション",
+	["All three done: a Gift Box was added!"] = "3 つ達成！ ギフトボックスが増えたよ",
 	["Give your spirits names"] = "スピリットに名前をつける",
 	["Tap a spirit to choose its name"] = "名前をつけるスピリットを選ぼう",
 	["Choose a name:"] = "名前を選ぼう:",
@@ -251,6 +253,23 @@ local TEMPLATES: { { string } } = {
 	{ "Find {} book entries", "図鑑を {1} 個、見つけよう" },
 	{ "Have {} spirits", "スピリットを {1} 匹、そろえよう" },
 	{ "Reach garden level {}", "ガーデンレベル {1} になろう" },
+	{ "Get {} Perfects", "Perfect を {1} 回、出そう" },
+	{ "Daily Missions  {}/{}", "デイリーミッション  {1}/{2}" },
+	{
+		"Daily bonus! Day {}: +{} coins and a Gift Box!",
+		"ログインボーナス！ {1} 日目: +{2} コインと、ギフトボックス！",
+	},
+	{ "Daily bonus! Day {}: +{} coins", "ログインボーナス！ {1} 日目: +{2} コイン" },
+	{ "Mission done! +{} coins", "ミッション達成！ +{1} コイン" },
+	{
+		"Login streak: {} days (every 7th day: a Gift Box)",
+		"連続ログイン: {1} 日（7 日ごとに、ギフトボックス）",
+	},
+	{
+		"Each mission pays {} coins. Finish all three for a Gift Box",
+		"1 つ達成ごとに {1} コイン。3 つそろうと、ギフトボックス",
+	},
+	{ "New missions in {} hours", "新しいミッションまで、あと約 {1} 時間" },
 	{ "{} likes you more!", "{1} が、もっとなついたよ！" },
 	{ "Pet your spirits {} times", "スピリットを {1} 回、なでよう" },
 	-- spirits' effects

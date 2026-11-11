@@ -20,6 +20,7 @@ local Economy = require(ReplicatedStorage.Shared.Garden.Economy)
 local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Growth = require(ReplicatedStorage.Shared.Garden.Growth)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
+local Daily = require(ReplicatedStorage.Shared.Garden.Daily)
 local Npcs = require(script.Parent.Npcs)
 local Park = require(ReplicatedStorage.Shared.Garden.Park)
 local ParkBuilder = require(script.Parent.ParkBuilder)
@@ -85,6 +86,7 @@ type Session = {
 	hasDoubleGrowth: boolean, -- owns the Double Growth game pass
 	pending: Pending?,
 	nextAutoCare: number, -- unix seconds: when the equipped spirit tends next
+	dailyNotice: { day: number, streak: number, coins: number, box: boolean }?, -- today's login bonus, shown once
 }
 
 local sessions: { [Player]: Session } = {}
@@ -196,6 +198,18 @@ local function groundY(x: number, z: number): number
 	return if hit then hit.Position.Y else 0
 end
 
+-- What the daily missions measure.
+local function dailyStats(d: PlayerData.Data): Daily.Stats
+	return {
+		harvests = d.stats.harvests,
+		runs = d.stats.tends,
+		perfects = d.stats.perfects,
+		pats = d.stats.pats,
+		level = Progression.levelFor(d.xp).level,
+		spirits = #d.spirits,
+	}
+end
+
 -- What the park goals measure.
 local function parkStats(d: PlayerData.Data): Park.Stats
 	local found = Collection.progress(d.collection)
@@ -261,6 +275,30 @@ local function snapshot(s: Session): any
 		xp = d.xp,
 		level = Progression.levelFor(d.xp),
 		mastery = table.clone(d.mastery),
+		daily = (function()
+			local stats = dailyStats(d)
+			local missions = {}
+			for _, id in d.daily.missions do
+				local mission = Daily.mission(id)
+				if mission then
+					table.insert(missions, {
+						id = id,
+						name = mission.name,
+						target = mission.target,
+						progress = math.min(Daily.progressOf(d.daily, mission, stats), mission.target),
+						claimed = d.daily.claimed[id] == true,
+					})
+				end
+			end
+			return {
+				streak = d.daily.streak,
+				bonus = d.daily.bonus,
+				missions = missions,
+				missionCoins = Daily.missionCoins(stats.level),
+				secondsLeft = Daily.secondsLeft(os.time()),
+				notice = s.dailyNotice,
+			}
+		end)(),
 		park = {
 			boxes = d.park.boxes,
 			items = table.clone(d.park.items),
@@ -285,6 +323,21 @@ local function rescueIfStuck(s: Session)
 	if d.coins < cheapest then
 		d.seeds[Seeds.StarterSeedId] = 1
 		print(`[Garden] {s.player.Name}: stuck without seeds or coins, gave a starter seed`)
+	end
+end
+
+-- Moves the daily bonus and missions on and pays what is due (login bonus, finished missions, the box for all three).
+local function syncDaily(s: Session)
+	local d = data(s)
+	local update = Daily.update(d.daily, dailyStats(d), os.time())
+	if update.coins > 0 then
+		d.coins += update.coins
+	end
+	if update.boxes > 0 then
+		d.park.boxes = math.min(Park.MaxBoxes, d.park.boxes + update.boxes)
+	end
+	if update.newDay then
+		s.dailyNotice = { day = d.daily.day, streak = update.streak, coins = update.loginCoins, box = update.loginBox }
 	end
 end
 
@@ -330,6 +383,7 @@ end
 
 local function push(s: Session)
 	rescueIfStuck(s)
+	syncDaily(s)
 	syncPark(s)
 	syncPets(s)
 	updateEvent:FireClient(s.player, snapshot(s))
@@ -1350,6 +1404,7 @@ local function createSession(player: Player, container: Instance): Session?
 		hasDoubleGrowth = false,
 		pending = nil,
 		nextAutoCare = 0,
+		dailyNotice = nil,
 	}
 	sessions[player] = s
 	-- Every spawn puts the player at the entrance of their own territory, facing the plots.

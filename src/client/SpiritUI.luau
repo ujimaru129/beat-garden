@@ -13,6 +13,7 @@ local UiTheme = require(script.Parent.UiTheme)
 local Palette = require(ReplicatedStorage.Shared.Palette)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Lang = require(script.Parent.Lang)
+local TipsUI = require(script.Parent.TipsUI)
 local Toast = require(script.Parent.Toast)
 
 local SpiritUI = {}
@@ -280,6 +281,9 @@ function SpiritUI.start()
 		end
 	end
 	GardenState.onChanged(function(snapshot)
+		if #snapshot.spirits > 0 then
+			TipsUI.show("pet")
+		end
 		if modal.isOpen() then
 			render(snapshot)
 		end

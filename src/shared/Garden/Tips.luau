@@ -5,7 +5,7 @@
 
 local Tips = {}
 
-Tips.Keys = table.freeze({ "levelup", "star", "overripe", "rush" })
+Tips.Keys = table.freeze({ "levelup", "star", "overripe", "rush", "park", "pet", "daily" })
 
 function Tips.isKey(key: unknown): boolean
 	return type(key) == "string" and table.find(Tips.Keys :: any, key) ~= nil
