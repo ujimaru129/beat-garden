@@ -166,6 +166,43 @@ Spirits.MaxBond = 100000
 Spirits.PatCooldown = 1.2 -- seconds between pats of the same spirit that count
 Spirits.MaxPets = 8 -- pets that roam a territory at once
 
+-- Names a player can give a spirit (a fixed list: no free text, so nothing can be offensive). A spirit stores the
+-- number of the name.
+Spirits.Nicknames = table.freeze({
+	{ en = "Momo", ja = "モモ" },
+	{ en = "Kuro", ja = "クロ" },
+	{ en = "Shiro", ja = "シロ" },
+	{ en = "Pochi", ja = "ポチ" },
+	{ en = "Mame", ja = "マメ" },
+	{ en = "Hana", ja = "ハナ" },
+	{ en = "Sora", ja = "ソラ" },
+	{ en = "Riku", ja = "リク" },
+	{ en = "Yuki", ja = "ユキ" },
+	{ en = "Tama", ja = "タマ" },
+	{ en = "Koro", ja = "コロ" },
+	{ en = "Nana", ja = "ナナ" },
+	{ en = "Lulu", ja = "ルル" },
+	{ en = "Beat", ja = "ビート" },
+	{ en = "Echo", ja = "エコー" },
+	{ en = "Mint", ja = "ミント" },
+	{ en = "Coco", ja = "ココ" },
+	{ en = "Pico", ja = "ピコ" },
+	{ en = "Dot", ja = "ドット" },
+	{ en = "Bell", ja = "ベル" },
+} :: { { en: string, ja: string } })
+
+-- The name for a nickname number in "en" or "ja", or nil for none / not valid.
+function Spirits.nickname(nick: any, lang: string): string?
+	if type(nick) ~= "number" then
+		return nil
+	end
+	local entry = Spirits.Nicknames[nick]
+	if not entry then
+		return nil
+	end
+	return if lang == "ja" then entry.ja else entry.en
+end
+
 -- 1..MaxBondLevel for a bond value.
 function Spirits.bondLevel(bond: number): number
 	local level = 1

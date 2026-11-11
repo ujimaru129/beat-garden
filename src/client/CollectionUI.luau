@@ -34,6 +34,7 @@ local function rows(snapshot: GardenState.Snapshot): { ListModal.Row }
 		table.insert(list, {
 			text = `{seed.name.en}  {found}/{total}   {table.concat(marks, "  ")}`,
 			color = if found == total then Palette.Hues.Yuzu.Night else nil,
+			icon = { kind = "plant", id = seed.seedId },
 		})
 	end
 	table.insert(list, {

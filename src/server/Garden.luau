@@ -35,7 +35,7 @@ local Shop = require(ReplicatedStorage.Shared.Garden.Shop)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Leaderboard = require(ReplicatedStorage.Shared.Garden.Leaderboard)
 local Leaderboards = require(script.Parent.Leaderboards)
-local PlantLook = require(script.Parent.PlantLook)
+local PlantLook = require(ReplicatedStorage.Shared.Garden.PlantLook)
 local Products = require(ReplicatedStorage.Shared.Garden.Products)
 local Tips = require(ReplicatedStorage.Shared.Garden.Tips)
 local Trading = require(script.Parent.Trading)
@@ -315,9 +315,17 @@ local function syncPets(s: Session)
 	local parts: { string } = {}
 	for i = 1, math.min(#list, Spirits.MaxPets) do
 		local spirit = list[i].spirit
-		table.insert(parts, `{spirit.id}:{spirit.kind}:{spirit.bond}`)
+		table.insert(parts, `{spirit.id}:{spirit.kind}:{spirit.bond}:{spirit.nick or 0}`)
 	end
 	s.player:SetAttribute("Pets", table.concat(parts, ","))
+	-- The equipped spirit follows its player around ("id:kind:bond:nick", or empty).
+	local follower = ""
+	for _, spirit in d.spirits do
+		if spirit.id == d.equippedSpirit then
+			follower = `{spirit.id}:{spirit.kind}:{spirit.bond}:{spirit.nick or 0}`
+		end
+	end
+	s.player:SetAttribute("Follower", follower)
 end
 
 local function push(s: Session)
@@ -1255,6 +1263,26 @@ local function pat(s: Session, payload: unknown): any
 	return fail("unknown spirit")
 end
 
+-- Gives a spirit one of the fixed names (nick = nil takes the name away).
+local function nameSpirit(s: Session, payload: unknown): any
+	if type(payload) ~= "table" then
+		return fail("bad request")
+	end
+	local request = payload :: any
+	local nick = request.nick
+	if nick ~= nil and (type(nick) ~= "number" or Spirits.Nicknames[math.floor(nick)] == nil) then
+		return fail("bad request")
+	end
+	for _, spirit in data(s).spirits do
+		if spirit.id == request.id then
+			spirit.nick = if nick ~= nil then math.floor(nick) else nil
+			push(s)
+			return { ok = true }
+		end
+	end
+	return fail("unknown spirit")
+end
+
 -- Studio only: gives 3 gift boxes so the park can be tried without finishing the goals.
 local function devBoxes(s: Session): any
 	if not RunService:IsStudio() then
@@ -1466,6 +1494,8 @@ function Garden.start()
 			return tip(s, payload)
 		elseif action == "useInstantGrow" then
 			return useInstantGrow(s, payload)
+		elseif action == "nameSpirit" then
+			return nameSpirit(s, payload)
 		elseif action == "pat" then
 			return pat(s, payload)
 		elseif action == "parkOpen" then

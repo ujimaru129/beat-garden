@@ -47,7 +47,8 @@ end
 local function rowsFor(
 	snapshot: GardenState.Snapshot,
 	hatch: () -> boolean,
-	equip: (id: string?) -> boolean
+	equip: (id: string?) -> boolean,
+	openNames: () -> ()
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
 	if snapshot.eggs > 0 then
@@ -62,6 +63,8 @@ local function rowsFor(
 
 	if #snapshot.spirits == 0 then
 		table.insert(rows, { text = "You have no spirits yet" })
+	else
+		table.insert(rows, { text = "Give your spirits names", color = Palette.Hues.Sora.Night, onTap = openNames })
 	end
 	-- One row per kind ("Koke x3"): the spirits of a kind are shown as the one that counts (the equipped one, else the
 	-- most petted, else the first hatched). Rows: the equipped kind first, then the most petted, then the kind in the
@@ -104,14 +107,15 @@ local function rowsFor(
 		if def then
 			local spirit = group.best
 			local equipped = group.equipped
-			local title = Lang.t(if equipped then `Equipped: {def.name.en}` else `Equip {def.name.en}`)
+			local called = Spirits.nickname(spirit.nick, Lang.code) or def.name.en
+			local title = Lang.t(if equipped then `Equipped: {called}` else `Equip {called}`)
 			table.insert(rows, {
 				text = `{hearts(spirit.bond)}  {title}{if group.count > 1 then `  \u{00D7}{group.count}` else ""}\n{effectText(
 					def
 				)}`,
 				color = if equipped then Palette.Hues.Yuzu.Night else nil,
 				selected = equipped,
-				spiritKind = group.kind,
+				icon = { kind = "spirit", id = group.kind },
 				onTap = function()
 					return equip(if equipped then nil else spirit.id)
 				end,
@@ -157,12 +161,127 @@ function SpiritUI.start()
 	local modal = ListModal.create("Spirits", function()
 		ProximityPromptService.Enabled = true
 	end)
-	local function rebuild(snapshot: GardenState.Snapshot)
-		modal.setRows(rowsFor(snapshot, hatch, equip))
+	-- Screens inside the modal: the spirits (main), the list to choose whom to name (names), and the names for one
+	-- spirit (pick).
+	type View = { kind: "main" } | { kind: "names" } | { kind: "pick", id: string }
+	local view: View = { kind = "main" }
+	local render: (GardenState.Snapshot) -> ()
+
+	local function setView(next: View)
+		view = next
+		local snapshot = GardenState.get()
+		if snapshot then
+			render(snapshot)
+		end
+	end
+
+	local function namesRows(snapshot: GardenState.Snapshot): { ListModal.Row }
+		local rows: { ListModal.Row } = {
+			{
+				text = "Back",
+				color = Palette.Hues.Fuji.Night,
+				onTap = function()
+					setView({ kind = "main" })
+				end,
+			},
+			{ note = true, text = "Tap a spirit to choose its name" },
+		}
+		local kindOrder: { [string]: number } = {}
+		for index, def in Spirits.List do
+			kindOrder[def.kind] = index
+		end
+		local ordered = table.clone(snapshot.spirits)
+		table.sort(ordered, function(a, b)
+			local aEquipped, bEquipped = a.id == snapshot.equippedSpirit, b.id == snapshot.equippedSpirit
+			if aEquipped ~= bEquipped then
+				return aEquipped
+			end
+			if (a.bond or 0) ~= (b.bond or 0) then
+				return (a.bond or 0) > (b.bond or 0)
+			end
+			return (kindOrder[a.kind] or 99) < (kindOrder[b.kind] or 99)
+		end)
+		for _, spirit in ordered do
+			local def = Spirits.get(spirit.kind)
+			if def then
+				local called = Spirits.nickname(spirit.nick, Lang.code)
+				table.insert(rows, {
+					text = `{hearts(spirit.bond)}  {def.name.en}{if called then `  \u{300C}{called}\u{300D}` else ""}`,
+					selected = spirit.id == snapshot.equippedSpirit,
+					icon = { kind = "spirit", id = spirit.kind },
+					onTap = function()
+						setView({ kind = "pick", id = spirit.id })
+					end,
+				})
+			end
+		end
+		return rows
+	end
+
+	local function pickRows(snapshot: GardenState.Snapshot, id: string): { ListModal.Row }
+		local rows: { ListModal.Row } = {
+			{
+				text = "Back",
+				color = Palette.Hues.Fuji.Night,
+				onTap = function()
+					setView({ kind = "names" })
+				end,
+			},
+		}
+		local current: number? = nil
+		for _, spirit in snapshot.spirits do
+			if spirit.id == id then
+				current = spirit.nick
+			end
+		end
+		table.insert(rows, { note = true, text = "Choose a name:" })
+		local function choose(nick: number?): boolean
+			local result = GardenState.call("nameSpirit", { id = id, nick = nick })
+			if not result.ok then
+				Toast.show(result.reason or "that did not work")
+				return false
+			end
+			setView({ kind = "names" })
+			return true
+		end
+		if current then
+			table.insert(rows, {
+				text = "No name",
+				onTap = function()
+					return choose(nil)
+				end,
+			})
+		end
+		for index, entry in Spirits.Nicknames do
+			table.insert(rows, {
+				text = if Lang.code == "ja" then entry.ja else entry.en,
+				selected = current == index,
+				onTap = function()
+					return choose(index)
+				end,
+			})
+		end
+		return rows
+	end
+
+	render = function(snapshot: GardenState.Snapshot)
+		local current = view
+		if current.kind == "names" then
+			modal.setTitle("Names")
+			modal.setRows(namesRows(snapshot))
+		elseif current.kind == "pick" then
+			modal.setTitle("Names")
+			modal.setRows(pickRows(snapshot, current.id))
+		else
+			modal.setTitle("Spirits")
+			modal.setRows(rowsFor(snapshot, hatch, equip, function()
+				setView({ kind = "names" })
+			end))
+		end
 	end
 	GardenState.onChanged(function(snapshot)
 		if modal.isOpen() then
-			rebuild(snapshot)
+			render(snapshot)
 		end
 	end)
 
@@ -180,7 +299,8 @@ function SpiritUI.start()
 			Toast.show("Still loading...")
 			return
 		end
-		rebuild(snapshot)
+		view = { kind = "main" }
+		render(snapshot)
 		ProximityPromptService.Enabled = false
 		modal.open()
 	end)

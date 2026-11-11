@@ -4,12 +4,14 @@
 -- Prototype look; the final design comes later.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local ScrollThumb = require(script.Parent.ScrollThumb)
+local PlantLook = require(ReplicatedStorage.Shared.Garden.PlantLook)
 local SpiritModel = require(script.Parent.SpiritModel)
 local Lang = require(script.Parent.Lang)
 local UiTheme = require(script.Parent.UiTheme)
@@ -21,7 +23,9 @@ export type Row = {
 	color: Color3?,
 	-- nil = just text. May return true (it worked: the row flashes green) or false (it did not: red).
 	onTap: (() -> boolean?)?,
-	spiritKind: string?, -- draws this spirit (3D) at the left of the row
+	-- A small 3D picture at the left of the row: a spirit (id = its kind) or a plant's fruit (id = the seed, with
+	-- the mutation if there is one).
+	icon: { kind: "spirit" | "plant", id: string, mutation: string? }?,
 	selected: boolean?, -- the chosen one (the equipped spirit ...): drawn lit up with a white frame and a check
 	note: boolean?, -- a long explanation: scaled on its own, and it does not set the common text size
 }
@@ -51,11 +55,11 @@ local function make(className: string, props: { [string]: any }, parent: Instanc
 	return inst
 end
 
--- A small 3D picture of a spirit for the left of a row. A ViewportFrame is the costly kind of picture, so the list
--- only shows the ones that are on screen (see showVisibleIcons).
-local function makeSpiritIcon(kind: string, lit: boolean): ViewportFrame
+-- A small 3D picture for the left of a row (a spirit, or a plant's fruit). A ViewportFrame is the costly kind of
+-- picture, so the list only shows the ones that are on screen (see showVisibleIcons).
+local function makeIcon(icon: { kind: string, id: string, mutation: string? }, lit: boolean): ViewportFrame
 	local viewport = Instance.new("ViewportFrame")
-	viewport.Name = "SpiritIcon"
+	viewport.Name = "RowIcon"
 	viewport.AnchorPoint = Vector2.new(0, 0.5)
 	-- The row's padding pushes children in: this puts the picture at the row's left edge, centred.
 	viewport.Position = UDim2.new(0, -(14 + ICON_SPACE) + 8, 0.5, 0)
@@ -69,11 +73,24 @@ local function makeSpiritIcon(kind: string, lit: boolean): ViewportFrame
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0.5, 0)
 	corner.Parent = viewport
-	local model = SpiritModel.create(kind)
-	model.Parent = viewport
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = 30
-	camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.9, -7.2), Vector3.new(0, 1.65, 0))
+	if icon.kind == "plant" then
+		-- the grown fruit, drawn with the same code as the plants in the garden
+		local model = Instance.new("Model")
+		model.Parent = viewport
+		local core = Instance.new("Part")
+		core.Anchored = true
+		core.CanCollide = false
+		core.Parent = model
+		local parts = Instance.new("Folder")
+		parts.Parent = model
+		PlantLook.apply(core, parts, Vector3.zero, icon.id, "Fruit", 1, icon.mutation, 0, 0.3)
+		camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.5, -7.5), Vector3.new(0, 1.35, 0))
+	else
+		SpiritModel.create(icon.id).Parent = viewport
+		camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.9, -7.2), Vector3.new(0, 1.65, 0))
+	end
 	camera.Parent = viewport
 	viewport.CurrentCamera = camera
 	return viewport
@@ -366,7 +383,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				make("UIPadding", {
 					PaddingTop = UDim.new(0.22, 0),
 					PaddingBottom = UDim.new(0.22, 0),
-					PaddingLeft = UDim.new(0, if row.spiritKind then 14 + ICON_SPACE else 14),
+					PaddingLeft = UDim.new(0, if row.icon then 14 + ICON_SPACE else 14),
 					PaddingRight = UDim.new(0, 14),
 				}, button)
 				-- Rows that cannot be tapped are quiet text; tappable ones are neon / candy buttons.
@@ -391,8 +408,8 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				end
 				button.InputBegan:Connect(beginDrag)
 				local icon: ViewportFrame? = nil
-				if row.spiritKind then
-					icon = makeSpiritIcon(row.spiritKind, row.selected == true)
+				if row.icon then
+					icon = makeIcon(row.icon, row.selected == true)
 					icon.Parent = button
 				end
 				table.insert(

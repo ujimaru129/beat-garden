@@ -1,8 +1,10 @@
 --!strict
--- The spirits as pets: every player's spirits (except the equipped one, which stays beside the plant) wander around
--- that player's territory. The server publishes them in the player attribute "Pets" ("id:kind:bond,...", see
--- Garden.syncPets); each client draws them, all on its own. Your own pets can be petted: tap one and its bond grows
--- (the server counts it), hearts pop up and it hops.
+-- The spirits as pets.
+--   * Every player's spirits except the equipped one wander around that player's territory. The server publishes them
+--     in the player attribute "Pets" ("id:kind:bond:nick,...", see Garden.syncPets).
+--   * The equipped spirit follows its player around (attribute "Follower", same format).
+-- Each client draws them all on its own. Your own can be petted: tap one and its bond grows (the server counts it),
+-- hearts pop up and it hops. A spirit with a name wears a small name tag.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -26,21 +28,26 @@ type Pet = {
 	id: string,
 	kind: string,
 	bond: number,
+	nick: number,
 	model: Model,
 	owner: Player,
+	follow: boolean,
 	position: Vector3,
 	target: Vector3?,
 	idleUntil: number,
 	phase: number,
 	hopUntil: number,
 	heading: number,
+	moving: boolean,
+	tag: TextLabel?,
 }
 
 local pets: { [Player]: { [string]: Pet } } = {}
+local followers: { [Player]: Pet } = {}
 local centers: { [number]: Vector3 } = {}
 local folder: Folder
 
--- The middle of a player's territory: the average of their plot soils (they are tagged by the server's attributes).
+-- The middle of a player's territory: the average of their plot soils (they carry the owner in an attribute).
 local function centerOf(userId: number): Vector3?
 	local cached = centers[userId]
 	if cached then
@@ -64,6 +71,57 @@ local function centerOf(userId: number): Vector3?
 	local center = sum / count
 	centers[userId] = center
 	return center
+end
+
+-- Where the player's feet are.
+local function feetOf(player: Player): (Vector3?, CFrame?)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not (root and root:IsA("BasePart")) then
+		return nil, nil
+	end
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local drop = (if humanoid then humanoid.HipHeight else 2) + root.Size.Y / 2
+	return root.Position - Vector3.new(0, drop, 0), root.CFrame
+end
+
+local function displayName(nick: number): string?
+	return Spirits.nickname(nick, Lang.code)
+end
+
+local function setTag(pet: Pet)
+	local name = displayName(pet.nick)
+	local anchor = pet.model.PrimaryPart
+	if not name then
+		if pet.tag then
+			(pet.tag.Parent :: Instance):Destroy()
+			pet.tag = nil
+		end
+		return
+	end
+	if not pet.tag and anchor then
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "NameTag"
+		gui.Size = UDim2.fromOffset(110, 26)
+		gui.StudsOffset = Vector3.new(0, 4.4, 0)
+		gui.AlwaysOnTop = false
+		gui.MaxDistance = 45
+		gui.Adornee = anchor
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.Font = Enum.Font.GothamBlack
+		label.TextSize = 18
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.TextStrokeColor3 = Color3.fromRGB(70, 50, 120)
+		label.TextStrokeTransparency = 0.2
+		label.Parent = gui
+		gui.Parent = anchor
+		pet.tag = label
+	end
+	if pet.tag then
+		pet.tag.Text = name
+	end
 end
 
 local function heartsAt(pet: Pet)
@@ -103,22 +161,36 @@ end
 local function patPet(pet: Pet)
 	pet.hopUntil = os.clock() + 0.55
 	pet.idleUntil = os.clock() + 1.5
-	pet.target = nil
+	if not pet.follow then
+		pet.target = nil
+	end
 	heartsAt(pet)
 	task.spawn(function()
 		local result = GardenState.call("pat", pet.id)
 		if result.ok and result.levelUp then
 			local def = Spirits.get(pet.kind)
-			local name = if def then (if Lang.code == "ja" then def.name.ja else def.name.en) else pet.kind
+			local name = displayName(pet.nick)
+				or (if def then (if Lang.code == "ja" then def.name.ja else def.name.en) else pet.kind)
 			Toast.show(`{name} likes you more!`)
 		end
 	end)
 end
 
-local function createPet(owner: Player, id: string, kind: string, bond: number): Pet?
-	local center = centerOf(owner.UserId)
-	if not center then
-		return nil
+local function createPet(owner: Player, id: string, kind: string, bond: number, nick: number, follow: boolean): Pet?
+	local start: Vector3
+	if follow then
+		local feet = feetOf(owner)
+		if not feet then
+			return nil
+		end
+		start = feet
+	else
+		local center = centerOf(owner.UserId)
+		if not center then
+			return nil
+		end
+		local rng = Random.new(#id * 31 + bond)
+		start = center + Vector3.new(rng:NextNumber(-12, 12), 0, rng:NextNumber(-12, 12))
 	end
 	local model = SpiritModel.create(kind)
 	local own = owner == Players.LocalPlayer
@@ -126,7 +198,6 @@ local function createPet(owner: Player, id: string, kind: string, bond: number):
 	if own then
 		-- The spirit's own parts cannot be hit by a click (they are not queried), so a see-through box around it
 		-- takes the taps; it is a bit bigger than the pet, which makes it easy to tap on a phone.
-		local pivot = model:GetPivot()
 		hitbox = Instance.new("Part")
 		local box = hitbox :: Part
 		box.Name = "PetHitbox"
@@ -137,24 +208,27 @@ local function createPet(owner: Player, id: string, kind: string, bond: number):
 		box.CastShadow = false
 		box.Transparency = 1
 		box.Size = Vector3.new(4.5, 5, 4.5)
-		box.CFrame = pivot * CFrame.new(0, 2.2, 0)
+		box.CFrame = model:GetPivot() * CFrame.new(0, 2.2, 0)
 		box.Parent = model
 	end
 	model:ScaleTo(0.8)
-	local rng = Random.new(#id * 31 + bond)
-	local start = center + Vector3.new(rng:NextNumber(-12, 12), 0, rng:NextNumber(-12, 12))
+	local rng = Random.new(#id * 17 + bond)
 	local pet: Pet = {
 		id = id,
 		kind = kind,
 		bond = bond,
+		nick = nick,
 		model = model,
 		owner = owner,
+		follow = follow,
 		position = start,
 		target = nil,
 		idleUntil = os.clock() + rng:NextNumber(0, 2),
 		phase = rng:NextNumber(0, 6),
 		hopUntil = 0,
 		heading = rng:NextNumber(0, math.pi * 2),
+		moving = false,
+		tag = nil,
 	}
 	if hitbox then
 		local click = Instance.new("ClickDetector")
@@ -165,6 +239,7 @@ local function createPet(owner: Player, id: string, kind: string, bond: number):
 		end)
 	end
 	model:PivotTo(CFrame.new(start))
+	setTag(pet)
 	return pet
 end
 
@@ -172,15 +247,24 @@ local function removePet(pet: Pet)
 	pet.model:Destroy()
 end
 
--- Reads a player's "Pets" attribute and makes the pets match it.
+-- "id:kind:bond:nick" (the nick is optional in old values).
+local function parseEntry(entry: string): (string?, string?, number, number)
+	local id, kind, bond, nick = string.match(entry, "^([^:]+):([^:]+):(%d+):?(%d*)$")
+	if not id or not kind or not Spirits.get(kind) then
+		return nil, nil, 0, 0
+	end
+	return id, kind, tonumber(bond) or 0, tonumber(nick) or 0
+end
+
+-- Reads a player's "Pets" attribute and makes the roaming pets match it.
 local function sync(owner: Player)
 	local value = owner:GetAttribute("Pets")
-	local wanted: { [string]: { kind: string, bond: number } } = {}
+	local wanted: { [string]: { kind: string, bond: number, nick: number } } = {}
 	if type(value) == "string" then
 		for entry in string.gmatch(value, "[^,]+") do
-			local id, kind, bond = string.match(entry, "^([^:]+):([^:]+):(%d+)$")
-			if id and kind and bond and Spirits.get(kind) then
-				wanted[id] = { kind = kind, bond = tonumber(bond) :: number }
+			local id, kind, bond, nick = parseEntry(entry)
+			if id and kind then
+				wanted[id] = { kind = kind, bond = bond, nick = nick }
 			end
 		end
 	end
@@ -196,11 +280,42 @@ local function sync(owner: Player)
 		local pet = mine[id]
 		if pet then
 			pet.bond = info.bond
+			if pet.nick ~= info.nick then
+				pet.nick = info.nick
+				setTag(pet)
+			end
 		else
-			local created = createPet(owner, id, info.kind, info.bond)
+			local created = createPet(owner, id, info.kind, info.bond, info.nick, false)
 			if created then
 				mine[id] = created
 			end
+		end
+	end
+end
+
+-- Reads "Follower": the equipped spirit.
+local function syncFollower(owner: Player)
+	local value = owner:GetAttribute("Follower")
+	local id, kind, bond, nick = nil, nil, 0, 0
+	if type(value) == "string" and value ~= "" then
+		id, kind, bond, nick = parseEntry(value)
+	end
+	local current = followers[owner]
+	if current and (id ~= current.id or kind ~= current.kind) then
+		removePet(current)
+		followers[owner] = nil
+		current = nil
+	end
+	if current then
+		current.bond = bond
+		if current.nick ~= nick then
+			current.nick = nick
+			setTag(current)
+		end
+	elseif id and kind then
+		local created = createPet(owner, id, kind, bond, nick, true)
+		if created then
+			followers[owner] = created
 		end
 	end
 end
@@ -209,7 +324,11 @@ local function track(player: Player)
 	player:GetAttributeChangedSignal("Pets"):Connect(function()
 		sync(player)
 	end)
+	player:GetAttributeChangedSignal("Follower"):Connect(function()
+		syncFollower(player)
+	end)
 	sync(player)
+	syncFollower(player)
 end
 
 function PetFx.start()
@@ -229,8 +348,23 @@ function PetFx.start()
 			end
 		end
 		pets[player] = nil
+		local follower = followers[player]
+		if follower then
+			removePet(follower)
+			followers[player] = nil
+		end
 		centers[player.UserId] = nil
 	end)
+
+	-- Hop height of a pet: a big hop after a pat, small hops while it moves, a gentle bob while it rests.
+	local function hopOf(pet: Pet, now: number): number
+		if now < pet.hopUntil then
+			return math.abs(math.sin((pet.hopUntil - now) / 0.55 * math.pi * 2)) * 1.6
+		elseif pet.moving then
+			return math.abs(math.sin(now * 7 + pet.phase)) * 0.55
+		end
+		return (math.sin(now * 2 + pet.phase) * 0.5 + 0.5) * 0.12
+	end
 
 	local since = 0
 	RunService.RenderStepped:Connect(function(dt: number)
@@ -245,6 +379,7 @@ function PetFx.start()
 		if retry then
 			since = 0
 		end
+
 		for owner, mine in pets do
 			-- a territory that was not built yet when the pet appeared: look for its plots again
 			if retry then
@@ -261,6 +396,7 @@ function PetFx.start()
 					continue
 				end
 				-- walk to a random spot, rest, repeat
+				pet.moving = pet.target ~= nil
 				if pet.target then
 					local toTarget = pet.target - pet.position
 					local flat = Vector3.new(toTarget.X, 0, toTarget.Z)
@@ -277,17 +413,40 @@ function PetFx.start()
 					local radius = math.sqrt(math.random()) * WANDER_RADIUS
 					pet.target = center + Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
 				end
-				local walking = pet.target ~= nil
-				local hop = 0
-				if now < pet.hopUntil then
-					hop = math.abs(math.sin((pet.hopUntil - now) / 0.55 * math.pi * 2)) * 1.6
-				elseif walking then
-					hop = math.abs(math.sin(now * 7 + pet.phase)) * 0.55
-				else
-					hop = (math.sin(now * 2 + pet.phase) * 0.5 + 0.5) * 0.12
-				end
-				pet.model:PivotTo(CFrame.new(pet.position + Vector3.new(0, hop, 0)) * CFrame.Angles(0, pet.heading, 0))
+				pet.model:PivotTo(
+					CFrame.new(pet.position + Vector3.new(0, hopOf(pet, now), 0)) * CFrame.Angles(0, pet.heading, 0)
+				)
 			end
+		end
+
+		-- The equipped spirit keeps close to its player: a little behind and to the side.
+		for owner, pet in followers do
+			if retry then
+				syncFollower(owner)
+			end
+			local feet, frame = feetOf(owner)
+			if not (feet and frame) then
+				continue
+			end
+			local spot = feet + frame.RightVector * 2.6 - frame.LookVector * 2.4
+			local offset = spot - pet.position
+			local flat = Vector3.new(offset.X, 0, offset.Z)
+			if flat.Magnitude > 60 then
+				pet.position = spot -- far behind (the player was moved): jump to them
+			else
+				pet.position += Vector3.new(offset.X, offset.Y, offset.Z) * math.min(1, dt * 5)
+			end
+			pet.moving = flat.Magnitude > 1.2
+			if pet.moving then
+				pet.heading = math.atan2(-flat.X, -flat.Z)
+			else
+				local look = frame.LookVector
+				pet.heading = math.atan2(-look.X, -look.Z)
+			end
+			pet.model.Parent = if (pet.position - eye).Magnitude < NEAR then folder else nil
+			pet.model:PivotTo(
+				CFrame.new(pet.position + Vector3.new(0, hopOf(pet, now), 0)) * CFrame.Angles(0, pet.heading, 0)
+			)
 		end
 	end)
 end

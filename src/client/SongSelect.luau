@@ -608,6 +608,7 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 			return
 		end
 		gui.Enabled = false
+		Players.LocalPlayer:SetAttribute("SongSelectOpen", nil)
 		stopRender()
 		destroyPreviews()
 		UiTheme.setBlur("songselect", false)
@@ -724,6 +725,7 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 			list.CanvasPosition = Vector2.new(0, 0)
 			velocity = 0
 			gui.Enabled = true
+			Players.LocalPlayer:SetAttribute("SongSelectOpen", true)
 			UiTheme.setBlur("songselect", true)
 			selectEntry(1, false)
 			-- the cards fly in from the left, one after another

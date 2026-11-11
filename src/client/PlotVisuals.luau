@@ -149,7 +149,7 @@ function PlotVisuals.start()
 				end
 
 				-- The equipped spirit: a little character that hops on the beat next to the plant
-				local kind: any = soil:GetAttribute("SpiritKind")
+				local kind: any = nil -- the equipped spirit follows its player now (PetFx), no longer stands by the plant
 				if kind ~= entry.orbKind then
 					entry.orbKind = kind :: string?
 					if entry.orb then

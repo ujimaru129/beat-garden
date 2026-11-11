@@ -24,6 +24,7 @@ export type SpiritInstance = {
 	id: string, -- unique per spirit
 	kind: string, -- Spirits kind
 	bond: number, -- how much it has been petted (Spirits.bondLevel)
+	nick: number?, -- the number of the name the player gave it (Spirits.Nicknames)
 }
 
 export type Data = {
@@ -183,6 +184,10 @@ function PlayerData.sanitize(raw: any): Data
 					id = spirit.id,
 					kind = spirit.kind,
 					bond = math.floor(num(spirit.bond, 0, 0, Spirits.MaxBond)),
+					nick = if type(spirit.nick) == "number"
+							and Spirits.Nicknames[math.floor(spirit.nick)] ~= nil
+						then math.floor(spirit.nick)
+						else nil,
 				})
 			end
 		end

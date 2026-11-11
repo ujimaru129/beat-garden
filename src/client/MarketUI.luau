@@ -72,6 +72,7 @@ local function shopRows(
 				seed.seedId
 			)}`,
 			color = if snapshot.coins >= seed.price then Palette.Hues.Matcha.Night else Palette.Rarity.Common,
+			icon = { kind = "plant", id = seed.seedId },
 			onTap = function()
 				return buy(seed.seedId)
 			end,
@@ -145,14 +146,20 @@ end
 local function sellRows(snapshot: GardenState.Snapshot, sellAll: () -> boolean): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
 	local total = 0
-	local groups: { [string]: { label: string, count: number, value: number } } = {}
+	local groups: { [string]: { label: string, count: number, value: number, seedId: string, mutation: string? } } = {}
 	local order: { string } = {}
 	for _, fruit in snapshot.fruits do
 		total += fruit.value
 		local key = `{fruit.seedId}|{fruit.mutation or ""}`
 		local group = groups[key]
 		if not group then
-			group = { label = fruitLabel(fruit.seedId, fruit.mutation), count = 0, value = 0 }
+			group = {
+				label = fruitLabel(fruit.seedId, fruit.mutation),
+				count = 0,
+				value = 0,
+				seedId = fruit.seedId,
+				mutation = fruit.mutation,
+			}
 			groups[key] = group
 			table.insert(order, key)
 		end
@@ -171,7 +178,10 @@ local function sellRows(snapshot: GardenState.Snapshot, sellAll: () -> boolean):
 	end
 	for _, key in order do
 		local group = groups[key]
-		table.insert(rows, { text = `{group.label} x{group.count}  ({group.value})` })
+		table.insert(rows, {
+			text = `{group.label} x{group.count}  ({group.value})`,
+			icon = { kind = "plant", id = group.seedId, mutation = group.mutation },
+		})
 	end
 	return rows
 end

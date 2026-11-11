@@ -15,6 +15,25 @@ return function(loader, expect)
 			end,
 		},
 		{
+			"nicknames come from a fixed list and are checked when loaded",
+			function()
+				expect(Spirits.nickname(1, "en")).toBe("Momo")
+				expect(Spirits.nickname(1, "ja")).toBe("モモ")
+				expect(Spirits.nickname(0, "en") == nil).toBe(true)
+				expect(Spirits.nickname("x", "en") == nil).toBe(true)
+				local data = PlayerData.sanitize({
+					spirits = {
+						{ id = "a", kind = "Mochi", nick = 3 },
+						{ id = "b", kind = "Kitsune", nick = 999 },
+						{ id = "c", kind = "Pon", nick = "Hello" },
+					},
+				})
+				expect(data.spirits[1].nick).toBe(3)
+				expect(data.spirits[2].nick == nil).toBe(true)
+				expect(data.spirits[3].nick == nil).toBe(true)
+			end,
+		},
+		{
 			"saved spirits keep their bond; old saves start at 0",
 			function()
 				local data = PlayerData.sanitize({

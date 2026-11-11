@@ -222,6 +222,7 @@ function TendFlow.start()
 			if count > 0 then
 				table.insert(rows, {
 					text = `{seed.name.en}  x{count}`,
+					icon = { kind = "plant", id = seed.seedId },
 					onTap = function()
 						seedModal.close()
 						local result = GardenState.call("plant", { seedId = seed.seedId, plotKey = currentPlotKey })
