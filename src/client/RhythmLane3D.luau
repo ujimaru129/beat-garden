@@ -123,7 +123,7 @@ local function makeNotePart(lane: number, parent: Instance): BasePart
 	props.Transparency = 1
 	if shape == "Circle" then
 		props.Shape = Enum.PartType.Cylinder
-		props.Size = Vector3.new(0.6, 2.4, 2.4) * NOTE_SCALE
+		props.Size = Vector3.new(0.6, 2.0, 2.0) * NOTE_SCALE
 		return make("Part", props, parent)
 	elseif shape == "Triangle" then
 		-- The triangle note is a stack of thin slabs, narrow at the apex (towards the far end of the lane) and
@@ -145,10 +145,10 @@ local function makeNotePart(lane: number, parent: Instance): BasePart
 		end
 		return anchor
 	elseif shape == "Diamond" then
-		props.Size = Vector3.new(1.8, 0.6, 1.8) * NOTE_SCALE
+		props.Size = Vector3.new(1.55, 0.6, 1.55) * NOTE_SCALE
 		return make("Part", props, parent)
 	end
-	props.Size = Vector3.new(2.2, 0.6, 2.2) * NOTE_SCALE
+	props.Size = Vector3.new(1.85, 0.6, 1.85) * NOTE_SCALE
 	return make("Part", props, parent)
 end
 
@@ -261,10 +261,25 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 
 		local line = solidProps(color)
 		line.Name = `HitLine{lane}`
-		line.Size = Vector3.new(LANE_WIDTH - 0.15, 0.3, 0.35)
+		line.Size = Vector3.new(LANE_WIDTH - 0.15, 0.3, 0.5)
 		line.CFrame = origin * CFrame.new(laneX(lane), 0.2, 0)
 		line.Material = Enum.Material.Neon
 		make("Part", line, folder)
+
+		-- The judgement zone: a wide pale band for Great, and inside it a bright one for Perfect, as wide as the real
+		-- windows (a note moves LANE_LENGTH studs in scrollMs). A note whose middle is in the bright band is Perfect.
+		local windows = RhythmEngine.Judge.DefaultWindows
+		for _, band in { { windows.Great, 0.82, 0.28 }, { windows.Perfect, 0.5, 0.18 } } do
+			local half = LANE_LENGTH * band[1] / scrollMs
+			local zone =
+				solidProps(if band[3] < 0.25 then Color3.new(1, 1, 1) else color:Lerp(Color3.new(1, 1, 1), 0.5))
+			zone.Name = `Zone{lane}`
+			zone.Size = Vector3.new(LANE_WIDTH - 0.3, 0.06, half * 2)
+			zone.CFrame = origin * CFrame.new(laneX(lane), 0.21 + band[3] * 0.05, 0)
+			zone.Material = Enum.Material.Neon
+			zone.Transparency = band[2]
+			make("Part", zone, folder)
+		end
 
 		local pad = solidProps(color)
 		pad.Name = `Pad{lane}`
