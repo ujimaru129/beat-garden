@@ -5,11 +5,11 @@
 -- difficulty so the feel of a hit is consistent. Difficulty changes what is on the chart (note
 -- count, set per chart in the master data) and how fast notes travel (scrollMs, below).
 
-export type Name = "Easy" | "Normal" | "Hard"
+export type Name = "Easy" | "Normal" | "Hard" | "Expert"
 
 local Difficulty = {}
 
-local names: { Name } = { "Easy", "Normal", "Hard" }
+local names: { Name } = { "Easy", "Normal", "Hard", "Expert" }
 Difficulty.Names = table.freeze(names)
 
 -- How long a note is visible before it reaches the hit line, in ms. Larger = slower = easier.
@@ -18,6 +18,7 @@ Difficulty.ScrollMs = table.freeze({
 	Easy = 2000,
 	Normal = 1500,
 	Hard = 1100,
+	Expert = 900, -- fast: for players who read notes at speed
 }) :: { [Name]: number }
 
 -- Reward: growth points earned by a tend are multiplied by this (initial values, tune later).
@@ -26,6 +27,7 @@ Difficulty.GrowthMultiplier = table.freeze({
 	Easy = 1,
 	Normal = 1.25,
 	Hard = 1.5,
+	Expert = 1.8,
 }) :: { [Name]: number }
 
 -- Reward: multiplier on the chance of a mutation when the fruit is harvested (initial values).
@@ -34,6 +36,7 @@ Difficulty.MutationChanceMultiplier = table.freeze({
 	Easy = 1,
 	Normal = 1.2,
 	Hard = 1.4,
+	Expert = 1.7,
 }) :: { [Name]: number }
 
 return table.freeze(Difficulty)

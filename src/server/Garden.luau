@@ -727,7 +727,7 @@ end
 -- Tend (the rhythm run)
 
 local function tendBegin(s: Session, payload: unknown): any
-	-- payload = { difficulty = "Easy" | "Normal" | "Hard", songId = "...", plotKey = "1" }
+	-- payload = { difficulty = "Easy" | "Normal" | "Hard" | "Expert", songId = "...", plotKey = "1" }
 	if type(payload) ~= "table" then
 		return fail("bad request")
 	end

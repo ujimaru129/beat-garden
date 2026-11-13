@@ -1,7 +1,7 @@
 --!strict
--- Touch-first difficulty picker: three large buttons at the bottom of the screen.
+-- Touch-first difficulty picker: four large buttons at the bottom of the screen.
 -- Prototype stand-in for the real "Tend" flow (pick a difficulty, then the run starts).
--- Keyboard shortcuts (1 / 2 / 3) are only a convenience on top of this.
+-- Keyboard shortcuts (1 / 2 / 3 / 4) are only a convenience on top of this.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,7 +17,7 @@ export type Picker = {
 	setTitle: (text: string, subtitle: string?) -> (), -- the chosen song and a small line under it
 }
 
-local HUES: { [string]: string } = { Easy = "Matcha", Normal = "Sora", Hard = "Sakura" }
+local HUES: { [string]: string } = { Easy = "Matcha", Normal = "Sora", Hard = "Sakura", Expert = "Fuji" }
 
 local function make(className: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(className)
@@ -28,7 +28,7 @@ local function make(className: string, props: { [string]: any }, parent: Instanc
 	return inst
 end
 
--- `onPick` is called with "Easy" / "Normal" / "Hard" when a button is tapped or clicked.
+-- `onPick` is called with "Easy" / "Normal" / "Hard" / "Expert" when a button is tapped or clicked.
 -- With `onCancel`, a small Cancel button is shown above the row.
 function DifficultyPicker.create(onPick: (name: string) -> (), onCancel: (() -> ())?): Picker
 	local gui = make("ScreenGui", {
@@ -41,13 +41,13 @@ function DifficultyPicker.create(onPick: (name: string) -> (), onCancel: (() -> 
 	local row = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -18),
-		Size = UDim2.new(0.6, 0, 0, 76),
+		Size = UDim2.new(0.8, 0, 0, 76),
 		BackgroundTransparency = 1,
 	}, gui)
-	make("UISizeConstraint", { MaxSize = Vector2.new(440, 76), MinSize = Vector2.new(300, 76) }, row)
+	make("UISizeConstraint", { MaxSize = Vector2.new(580, 76), MinSize = Vector2.new(340, 76) }, row)
 	make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
-		Padding = UDim.new(0, 16),
+		Padding = UDim.new(0, 12),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, row)
 
@@ -55,7 +55,7 @@ function DifficultyPicker.create(onPick: (name: string) -> (), onCancel: (() -> 
 	for i, name in Difficulty.Names do
 		local button = make("TextButton", {
 			LayoutOrder = i,
-			Size = UDim2.new(1 / 3, -11, 1, 0),
+			Size = UDim2.new(1 / 4, -9, 1, 0),
 			AutoButtonColor = true,
 			Text = name,
 			TextScaled = true,

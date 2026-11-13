@@ -89,6 +89,19 @@ DIFFICULTY = {
         "burst_max_run": 4,
         "max_jump": 2,
     },
+    # For rhythm-game players: built on the beat grid. Most notes sit on the beat, the 8ths add the off-beat only as a
+    # minority (at most `max_offbeat_ratio` of all notes) and the 16ths only a little; notes off the grid are never used.
+    "Expert": {
+        "per_beat": 3.2,
+        "min_gap_beats": 0.22,
+        "min_gap_ms": 110,
+        "grid": {"beat": 1.0, "eighth": 0.5, "sixteenth": 0.3},
+        "grid_tol": 0.13,
+        "max_offbeat_ratio": 0.5,
+        "burst_cooldown_beats": 0.4,
+        "burst_max_run": 6,
+        "max_jump": 3,
+    },
 }
 
 
@@ -98,6 +111,10 @@ OVERRIDES = {
         # fast and busy, and many hits between the beats: keep to the beat, with only some of the others
         "Normal": {"grid": {"beat": 1.0, "eighth": 0.3}, "grid_tol": 0.14, "per_beat": 1.5, "max_offbeat_ratio": 0.3},
         "Hard": {"grid": {"beat": 1.0, "eighth": 0.5, "sixteenth": 0.2}, "grid_tol": 0.14, "per_beat": 2.3, "max_offbeat_ratio": 0.4},
+    },
+    "pastel_trip": {
+        # slow (about 100 BPM) with a lot going on in the 8ths and 16ths: Expert can take more of them
+        "Expert": {"per_beat": 4.0, "grid": {"beat": 1.0, "eighth": 0.6, "sixteenth": 0.5}, "grid_tol": 0.15, "max_offbeat_ratio": 0.6, "min_gap_ms": 100},
     },
     "blue_samurai": {
         "Hard": {"per_beat": 1.6, "burst_max_run": 2, "burst_cooldown_beats": 1.0, "min_gap_ms": 165},

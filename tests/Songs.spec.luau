@@ -2,7 +2,7 @@ return function(loader, expect)
 	local Songs = loader.require("src/shared/Songs")
 	local Chart = loader.require("src/shared/RhythmEngine/Chart")
 
-	local difficulties = { "Easy", "Normal", "Hard" }
+	local difficulties = { "Easy", "Normal", "Hard", "Expert" }
 	-- Lune has no Random; always pick the first segment.
 	local rng: any = {
 		NextInteger = function(_self, low: number, _high: number)
@@ -32,6 +32,7 @@ return function(loader, expect)
 						end
 						expect(counts.Easy < counts.Normal).toBeTruthy()
 						expect(counts.Normal < counts.Hard).toBeTruthy()
+						expect(counts.Hard < counts.Expert).toBeTruthy()
 					end
 				end
 			end,

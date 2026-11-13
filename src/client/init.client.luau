@@ -95,7 +95,7 @@ calButton.Activated:Connect(function()
 	end
 end)
 
--- Studio-only shortcut for trying charts without a plant: keys 1 / 2 / 3 = Easy / Normal / Hard.
+-- Studio-only shortcut for trying charts without a plant: keys 1 / 2 / 3 / 4 = Easy / Normal / Hard / Expert.
 -- (Results are only checked, not applied to any plant.)
 if RunService:IsStudio() then
 	local remote = ReplicatedStorage:WaitForChild("RhythmDev") :: RemoteFunction
@@ -103,6 +103,7 @@ if RunService:IsStudio() then
 		[Enum.KeyCode.One] = "Easy",
 		[Enum.KeyCode.Two] = "Normal",
 		[Enum.KeyCode.Three] = "Hard",
+		[Enum.KeyCode.Four] = "Expert",
 	}
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		-- 0 = wipe this player's data and replay the tutorial

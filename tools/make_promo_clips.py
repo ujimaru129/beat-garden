@@ -11,6 +11,7 @@ OUT = ROOT / "promo/final"
 ICON = ROOT / "assets/branding/game_icon_final_512.png"
 FONT = "/System/Library/Fonts/ヒラギノ丸ゴ ProN W4.ttc"
 W, H = 1080, 1920
+GAME_Y = 480  # top of the gameplay strip in the 9:16 frame
 CROP = "crop=1080:484:0:958"  # the game is a 1080x484 strip inside the 1080x2400 recording
 
 # name, start, length, line under the title
@@ -49,9 +50,9 @@ def overlay(line, path):
     # the logo, the tagline and the info banner are artwork from assets/branding/promo (the line argument is unused)
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     art = ROOT / "assets/branding/promo"
-    paste_shadowed(img, Image.open(art / "logo.png"), 600, 110)
-    paste_shadowed(img, Image.open(art / "tagline_tap.png"), 660, 390)
-    paste_shadowed(img, Image.open(art / "info_banner.png"), 900, 1215)
+    # Everything sits in the upper 3/4: YouTube Shorts and TikTok cover the bottom with the title and buttons.
+    paste_shadowed(img, Image.open(art / "logo.png"), 700, 100)
+    paste_shadowed(img, Image.open(art / "info_banner.png"), 840, GAME_Y + 484 + 30)
     img.save(path)
 
 
@@ -64,7 +65,7 @@ def main():
         fc = (
             f"[0:v]{CROP},split[a][b];"
             f"[a]scale=-2:{H},crop={W}:{H},boxblur=40:4,eq=brightness=0.05:saturation=1.2[bg];"
-            f"[bg][b]overlay=0:{(H - 484) // 2}[v1];"
+            f"[bg][b]overlay=0:{GAME_Y}[v1];"
             f"[v1][1:v]overlay=0:0,fps=30,fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out}:d=0.4[v]"
         )
         subprocess.run(

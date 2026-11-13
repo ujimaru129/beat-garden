@@ -64,7 +64,7 @@ function Songs.get(songId: string): SongData?
 	return byId[songId]
 end
 
--- A random segment of the song at the given difficulty ("Easy" | "Normal" | "Hard").
+-- A random segment of the song at the given difficulty ("Easy" | "Normal" | "Hard" | "Expert").
 function Songs.pick(songId: string, difficulty: string, rng: Random?): Pick?
 	local song = byId[songId]
 	if not song or #song.segments == 0 then
