@@ -17,3 +17,6 @@ Thumbs.db
 
 # Audio sources and renders (large; asset IDs live in the game data instead)
 /audio/
+
+# promo videos and screenshots are large; keep them out of git
+promo/raw/

@@ -7,8 +7,8 @@ local Strings = {}
 
 local tables: { [string]: { [string]: string } } = {
 	en = {
-		tutorial_plant = "Walk to your garden spot and tap Plant",
-		tutorial_tend = "Tap Tend and play along with the beat!",
+		tutorial_plant = "Walk to your garden spot, tap Plant and choose a seed",
+		tutorial_tend = "Go to your plant and tap Tend: the rhythm game starts! Tap along with the beat",
 		tutorial_harvest = "It's ready! Tap Harvest",
 		tutorial_sell = "Walk to the yellow Market stall and tap Sell",
 		tutorial_buy = "Tap the Shop button and buy a new seed",
@@ -23,8 +23,8 @@ local tables: { [string]: { [string]: string } } = {
 		tip_daily = "Daily missions are in Park. Finish all three for a Gift Box, and log in every day for bigger bonuses!",
 	},
 	ja = {
-		tutorial_plant = "自分の植え場に近づいて「植える」をタップ。タネを植えよう",
-		tutorial_tend = "「世話する」をタップして、リズムに合わせて世話しよう！",
+		tutorial_plant = "自分の植え場に近づいて「植える」をタップ。タネを選んで植えよう",
+		tutorial_tend = "植えたタネに近づいて「世話する」をタップ。リズムゲームが始まるよ！",
 		tutorial_harvest = "実ができた！「収穫」をタップ",
 		tutorial_sell = "黄色い「マーケット」の屋台に近づいて「売る」をタップ",
 		tutorial_buy = "「ショップ」ボタンをタップして、新しいタネを買おう",

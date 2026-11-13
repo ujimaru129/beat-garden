@@ -75,6 +75,7 @@ local EXACT: { [string]: string } = {
 	-- plot prompts
 	["Plant"] = "植える",
 	["Tend"] = "世話する",
+	["\u{266A} Tap Tend to play the rhythm game!"] = "\u{266A} 「世話する」でリズムゲーム！",
 	["Harvest"] = "収穫",
 	["Harvest (overripe)"] = "収穫（熟しすぎ）",
 	["Sell"] = "売る",

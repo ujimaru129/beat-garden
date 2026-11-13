@@ -28,6 +28,7 @@ local TradeUI = require(script.TradeUI)
 local Difficulty = require(ReplicatedStorage.Shared.Difficulty)
 local RhythmRunner = require(script.RhythmRunner)
 local TendFlow = require(script.TendFlow)
+local PlayHint = require(script.PlayHint)
 local TutorialUI = require(script.TutorialUI)
 local UiTheme = require(script.UiTheme)
 local WorldFx = require(script.WorldFx)
@@ -58,6 +59,7 @@ ParkUI.start()
 LeaderboardUI.start()
 TradeUI.start()
 TutorialUI.start()
+task.spawn(PlayHint.start) -- waits for the garden to arrive
 RushBanner.start()
 
 -- The plant prompt (tap, or E on keyboard): plant a seed, Tend it, or harvest it.

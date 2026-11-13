@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Cuts the raw screen recording into 9:16 TikTok clips: the gameplay in the middle over a blurred copy of itself,
+the game icon + title on top, and a short info line below. Usage: python3 tools/make_promo_clips.py"""
+import subprocess
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+
+ROOT = Path(__file__).resolve().parent.parent
+RAW = next((ROOT / "promo/raw").glob("*.mp4"))
+OUT = ROOT / "promo/final"
+ICON = ROOT / "assets/branding/game_icon_final_512.png"
+FONT = "/System/Library/Fonts/ヒラギノ丸ゴ ProN W4.ttc"
+W, H = 1080, 1920
+CROP = "crop=1080:484:0:958"  # the game is a 1080x484 strip inside the 1080x2400 recording
+
+# name, start, length, line under the title
+CLIPS = [
+    ("01_combo", 33, 22, "リズムに合わせてタップ！"),
+    ("02_combo_100", 97, 23, "100コンボ目指せ！"),
+    ("03_plant_harvest", 123.5, 20, "リズムゲームで植物が育つ"),
+    ("04_park", 180, 20, "自分の庭が遊園地になる"),
+    ("05_select_and_play", 198, 25, "好きな曲を選んで遊ぼう"),
+    ("06_combo_50", 242, 22, "50コンボ！ノリノリ"),
+]
+
+
+def font(size):
+    return ImageFont.truetype(FONT, size)
+
+
+def text_c(d, y, text, size, fill, stroke=None, sw=0):
+    f = font(size)
+    w = d.textlength(text, font=f)
+    d.text(((W - w) / 2, y), text, font=f, fill=fill, stroke_width=sw, stroke_fill=stroke)
+
+
+def paste_shadowed(img, art, width, y):
+    art = art.resize((width, round(art.height * width / art.width)), Image.LANCZOS)
+    x = (W - width) // 2
+    shadow = Image.new("RGBA", art.size, (40, 20, 90, 0))
+    shadow.putalpha(art.getchannel("A").point(lambda a: int(a * 0.55)))
+    from PIL import ImageFilter
+    shadow = shadow.filter(ImageFilter.GaussianBlur(8))
+    img.alpha_composite(shadow, (x + 4, y + 8))
+    img.alpha_composite(art, (x, y))
+
+
+def overlay(line, path):
+    # the logo, the tagline and the info banner are artwork from assets/branding/promo (the line argument is unused)
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    art = ROOT / "assets/branding/promo"
+    paste_shadowed(img, Image.open(art / "logo.png"), 600, 110)
+    paste_shadowed(img, Image.open(art / "tagline_tap.png"), 660, 390)
+    paste_shadowed(img, Image.open(art / "info_banner.png"), 900, 1215)
+    img.save(path)
+
+
+def main():
+    OUT.mkdir(exist_ok=True)
+    tmp = OUT / "_overlay.png"
+    for name, start, length, line in CLIPS:
+        overlay(line, tmp)
+        fade_out = length - 0.4
+        fc = (
+            f"[0:v]{CROP},split[a][b];"
+            f"[a]scale=-2:{H},crop={W}:{H},boxblur=40:4,eq=brightness=0.05:saturation=1.2[bg];"
+            f"[bg][b]overlay=0:{(H - 484) // 2}[v1];"
+            f"[v1][1:v]overlay=0:0,fps=30,fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out}:d=0.4[v]"
+        )
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-t", str(length), "-i", str(RAW), "-i", str(tmp),
+             "-filter_complex", fc, "-map", "[v]", "-map", "0:a",
+             "-af", f"afade=t=in:d=0.3,afade=t=out:st={length - 0.6}:d=0.6",
+             "-c:v", "libx264", "-crf", "23", "-preset", "medium", "-pix_fmt", "yuv420p",
+             "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(OUT / f"{name}.mp4")],
+            check=True)
+        print("made", name)
+    tmp.unlink()
+
+
+if __name__ == "__main__":
+    main()
