@@ -8,7 +8,7 @@ local Genres = require(script.Parent.Genres)
 local Rush = {}
 
 Rush.CycleSeconds = 3600
-Rush.StartSeconds = 1200 -- minute 20 of the hour (the hourly night is the last 5 minutes)
+Rush.StartSeconds = 1200 -- minute 20 of the hour (the hourly night is the last 20 minutes)
 Rush.DurationSeconds = 600 -- 10 minutes
 Rush.MutationBoost = 1.6 -- multiplies the mutation chance of the genre's seeds
 Rush.WarnSeconds = 60 -- the banner shows up this long before it starts

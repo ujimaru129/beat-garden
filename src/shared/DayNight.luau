@@ -1,12 +1,12 @@
 --!strict
 -- The day / night schedule, shared by every client and server from the same clock (unix seconds).
--- Spec: "1時間ごとに5分間の夜". For the MVP night is only a look (the Night Heist game rules come in
+-- Spec: "1時間ごとに5分間の夜" (raised to 20 minutes after the first playtests). For the MVP night is only a look (the Night Heist game rules come in
 -- v1.1), but the schedule is already the real one so it will not change later.
 
 local DayNight = {}
 
 DayNight.CycleSeconds = 3600 -- one day = one hour
-DayNight.NightSeconds = 300 -- the last 5 minutes of every hour
+DayNight.NightSeconds = 1200 -- the last 20 minutes of every hour
 DayNight.TransitionSeconds = 5 -- length of the grading change at dusk and dawn
 
 export type TimeOfDay = "Day" | "Night"

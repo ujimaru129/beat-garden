@@ -179,12 +179,12 @@ return function(loader, expect)
 			end,
 		},
 		{
-			"night is the last five minutes of every hour",
+			"night is the last twenty minutes of every hour",
 			function()
 				local hour = 7200 -- any whole hour
 				expect(DayNight.isNight(hour)).toBe(false)
-				expect(DayNight.isNight(hour + 3299)).toBe(false)
-				expect(DayNight.isNight(hour + 3300)).toBe(true)
+				expect(DayNight.isNight(hour + 2399)).toBe(false)
+				expect(DayNight.isNight(hour + 2400)).toBe(true)
 				expect(DayNight.isNight(hour + 3599)).toBe(true)
 				expect(DayNight.isNight(hour + 3600)).toBe(false)
 				expect(DayNight.timeOfDay(hour + 3400)).toBe("Night")
@@ -193,9 +193,9 @@ return function(loader, expect)
 		{
 			"the countdown to the next change is right on both sides",
 			function()
-				expect(DayNight.secondsUntilChange(0)).toBe(3300)
-				expect(DayNight.secondsUntilChange(3299)).toBe(1)
-				expect(DayNight.secondsUntilChange(3300)).toBe(300)
+				expect(DayNight.secondsUntilChange(0)).toBe(2400)
+				expect(DayNight.secondsUntilChange(2399)).toBe(1)
+				expect(DayNight.secondsUntilChange(2400)).toBe(1200)
 				expect(DayNight.secondsUntilChange(3599)).toBe(1)
 			end,
 		},

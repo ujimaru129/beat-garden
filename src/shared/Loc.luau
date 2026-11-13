@@ -18,6 +18,7 @@ local EXACT: { [string]: string } = {
 	["Goals"] = "目標",
 	["Back"] = "もどる",
 	["Names"] = "名前",
+	["\u{1F319} Night has come! The neon show begins"] = "\u{1F319} 夜がきた！ネオンのショータイム",
 	["Daily Missions"] = "デイリーミッション",
 	["All three done: a Gift Box was added!"] = "3 つ達成！ ギフトボックスが増えたよ",
 	["Give your spirits names"] = "スピリットに名前をつける",

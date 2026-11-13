@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local Toast = require(script.Parent.Toast)
 local DayNight = require(game:GetService("ReplicatedStorage").Shared.DayNight)
 local Palette = require(game:GetService("ReplicatedStorage").Shared.Palette)
 
@@ -153,6 +154,9 @@ function Atmosphere.start()
 			if now ~= current then
 				current = now
 				apply(now, DayNight.TransitionSeconds)
+				if now == "Night" then
+					Toast.show("\u{1F319} Night has come! The neon show begins")
+				end
 			end
 		end
 	end)
