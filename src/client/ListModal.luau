@@ -346,6 +346,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	modal = {
 		open = function()
 			restyle()
+			list.CanvasPosition = Vector2.zero -- always from the top: the first rows say what is equipped / placed
 			gui.Enabled = true
 			UiTheme.setBlur("list", true)
 			task.defer(function()
@@ -358,7 +359,11 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			return gui.Enabled
 		end,
 		setTitle = function(text: string)
-			titleLabel.Text = Lang.t(text)
+			local translated = Lang.t(text)
+			if titleLabel.Text ~= translated then
+				list.CanvasPosition = Vector2.zero -- another view: start at its top
+			end
+			titleLabel.Text = translated
 		end,
 		setRows = function(rows: { Row })
 			currentTheme = UiTheme.get() -- the time of day may have changed since the modal was created
