@@ -72,6 +72,13 @@ local attractions: { Attraction } = {
 	},
 	{ id = "balloons", name = { en = "Balloon Bunch", ja = "風船の束" }, kind = "sky", weight = 10 },
 	{ id = "lanterns", name = { en = "Lantern Garland", ja = "提灯のつなぎ" }, kind = "sky", weight = 10 },
+	{ id = "pirate", name = { en = "Pirate Ship", ja = "海賊船" }, kind = "ground", weight = 8 },
+	{ id = "droptower", name = { en = "Drop Tower", ja = "ドロップタワー" }, kind = "ground", weight = 7 },
+	{ id = "rockets", name = { en = "Rocket Spinner", ja = "ロケットスピナー" }, kind = "ground", weight = 8 },
+	{ id = "candy", name = { en = "Candy Stall", ja = "キャンディ屋台" }, kind = "ground", weight = 10 },
+	{ id = "hotair", name = { en = "Hot Air Balloon", ja = "熱気球" }, kind = "sky", weight = 8 },
+	{ id = "stars", name = { en = "Star Mobile", ja = "星のモビール" }, kind = "sky", weight = 8 },
+	{ id = "cranes", name = { en = "Paper Cranes", ja = "折り鶴" }, kind = "sky", weight = 9 },
 }
 Park.Attractions = table.freeze(attractions)
 

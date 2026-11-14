@@ -412,6 +412,198 @@ function builders.lanterns(ctx, parent)
 	box(ctx, parent, Vector3.new(0, 11.6, 0), Vector3.new(18, 0.12, 0.12), WHITE)
 end
 
+function builders.pirate(ctx, parent)
+	post(ctx, parent, Vector3.new(0, 0.4, 0), 0.8, 15, WHITE)
+	-- two A-frames hold the axle the ship swings from
+	for _, x in { -4, 4 } do
+		rod(ctx, parent, Vector3.new(x, 0.8, -4), Vector3.new(x, 10, 0), 0.7, WHITE)
+		rod(ctx, parent, Vector3.new(x, 0.8, 4), Vector3.new(x, 10, 0), 0.7, WHITE)
+	end
+	box(ctx, parent, Vector3.new(0, 10, 0), Vector3.new(9, 0.8, 0.8), ctx.accent, true)
+	local ship =
+		mover(ctx, parent, "ParkSwing", Vector3.new(0, 10, 0), { SwingAngle = 0.7, SwingSpeed = 1.1, SwingPhase = 0 })
+	for _, x in { -2, 2 } do
+		box(ctx, ship, Vector3.new(x, 5.8, 0), Vector3.new(0.2, 8.4, 0.2), WHITE)
+	end
+	box(ctx, ship, Vector3.new(0, 1.6, 0), Vector3.new(5, 1.6, 12), ctx.primary) -- the hull
+	box(ctx, ship, Vector3.new(0, 1.0, 0), Vector3.new(5.4, 0.4, 12.4), WHITE)
+	box(ctx, ship, Vector3.new(0, 2.6, -6.4), Vector3.new(4, 1.8, 1.4), ctx.primary) -- the bow and the stern, raised
+	box(ctx, ship, Vector3.new(0, 2.6, 6.4), Vector3.new(4, 1.8, 1.4), ctx.primary)
+	box(ctx, ship, Vector3.new(0, 3.1, 0), Vector3.new(5.2, 0.3, 12), ctx.accent, true) -- the rail
+	post(ctx, ship, Vector3.new(0, 5.2, 0), 6.5, 0.5, DARK) -- the mast
+	box(ctx, ship, Vector3.new(0, 6, 0), Vector3.new(0.2, 3.6, 3.4), WHITE) -- the sail
+	box(ctx, ship, Vector3.new(0, 8.6, 0), Vector3.new(0.2, 0.9, 1.4), ctx.accent, true)
+end
+
+function builders.droptower(ctx, parent)
+	post(ctx, parent, Vector3.new(0, 0.4, 0), 0.8, 11, ctx.primary)
+	post(ctx, parent, Vector3.new(0, 9, 0), 17, 2.2, WHITE)
+	for i = 0, 3 do
+		post(ctx, parent, Vector3.new(0, 3 + i * 4.4, 0), 0.5, 3, if i % 2 == 0 then ctx.accent else ctx.primary, true)
+	end
+	post(ctx, parent, Vector3.new(0, 18.2, 0), 1, 4, ctx.accent)
+	ball(ctx, parent, Vector3.new(0, 19.6, 0), 2, ctx.accent, true)
+	-- the gondola ring rises and falls on the tower
+	local ring =
+		mover(ctx, parent, "ParkBob", Vector3.new(0, 9, 0), { BobAmount = 5, BobSpeed = 0.8, BobPhase = ctx.seed })
+	post(ctx, ring, Vector3.new(0, 9, 0), 1, 6, ctx.primary)
+	post(ctx, ring, Vector3.new(0, 9.7, 0), 0.3, 6.6, WHITE)
+	for i = 0, 3 do
+		local angle = i / 4 * math.pi * 2
+		box(
+			ctx,
+			ring,
+			Vector3.new(math.cos(angle) * 3.4, 8.3, math.sin(angle) * 3.4),
+			Vector3.new(1.4, 1.4, 1.4),
+			ctx.accent,
+			true
+		)
+	end
+	light(parent:FindFirstChildWhichIsA("Part") :: Instance, ctx.accent, 1.2, 18)
+end
+
+function builders.rockets(ctx, parent)
+	post(ctx, parent, Vector3.new(0, 0.4, 0), 0.8, 14, WHITE)
+	post(ctx, parent, Vector3.new(0, 4.5, 0), 8, 1.4, ctx.primary)
+	local ride = mover(ctx, parent, "ParkSpin", Vector3.new(0, 0, 0), { SpinSpeed = 1, SpinAxis = "Y" })
+	post(ctx, ride, Vector3.new(0, 8.4, 0), 0.8, 3, ctx.accent, true)
+	for i = 0, 3 do
+		local angle = i / 4 * math.pi * 2
+		local x, z = math.cos(angle) * 5.2, math.sin(angle) * 5.2
+		local rocket = Vector3.new(x, 5.4, z)
+		rod(ctx, ride, Vector3.new(0, 8.4, 0), rocket + Vector3.new(0, 1.2, 0), 0.25, WHITE)
+		post(ctx, ride, rocket, 3, 1.3, if i % 2 == 0 then ctx.primary else WHITE) -- the body
+		ball(ctx, ride, rocket + Vector3.new(0, 1.9, 0), 1.3, ctx.accent, true) -- the nose
+		ball(ctx, ride, rocket + Vector3.new(0, 0.2, 0), 0.7, Color3.fromRGB(150, 225, 255), true) -- the window
+		for _, side in { -1, 1 } do
+			box(
+				ctx,
+				ride,
+				rocket + Vector3.new(side * 0.8 * math.cos(angle + 1.57), -1.2, side * 0.8 * math.sin(angle + 1.57)),
+				Vector3.new(0.4, 1, 0.4),
+				ctx.accent
+			)
+		end
+		ball(ctx, ride, rocket + Vector3.new(0, -1.9, 0), 0.9, Color3.fromRGB(255, 200, 90), true) -- the flame
+	end
+	light(parent:FindFirstChildWhichIsA("Part") :: Instance, ctx.primary, 1.2, 16)
+end
+
+function builders.candy(ctx, parent)
+	box(ctx, parent, Vector3.new(0, 0.3, 0), Vector3.new(11, 0.6, 7), WHITE) -- the floor
+	box(ctx, parent, Vector3.new(0, 1.8, -1.5), Vector3.new(9, 2.4, 2), ctx.primary) -- the counter
+	box(ctx, parent, Vector3.new(0, 3.1, -1.5), Vector3.new(9.4, 0.3, 2.4), WHITE)
+	for _, x in { -4.4, 4.4 } do
+		box(ctx, parent, Vector3.new(x, 4.5, 2.2), Vector3.new(0.5, 8.4, 0.5), WHITE)
+	end
+	box(ctx, parent, Vector3.new(0, 4, 2.7), Vector3.new(9, 6, 0.4), ctx.accent) -- the back wall
+	-- a striped awning
+	for i = 0, 5 do
+		local x = (i - 2.5) * 1.6
+		part(ctx, parent, {
+			Size = Vector3.new(1.6, 0.35, 6.6),
+			Color = if i % 2 == 0 then ctx.accent else WHITE,
+		}, Vector3.new(x, 8.6, 0.6), CFrame.Angles(math.rad(-12), 0, 0))
+	end
+	-- jars of sweets on the counter
+	for i = 0, 3 do
+		ball(
+			ctx,
+			parent,
+			Vector3.new((i - 1.5) * 2, 4.2, -1.5),
+			1.6,
+			if i % 2 == 0 then ctx.accent else ctx.primary,
+			true
+		)
+	end
+	-- a big lollipop that turns
+	local sign = mover(ctx, parent, "ParkSpin", Vector3.new(6.8, 0, 0), { SpinSpeed = 1.2, SpinAxis = "Y" })
+	post(ctx, sign, Vector3.new(6.8, 2.5, 0), 5, 0.4, WHITE)
+	post(ctx, sign, Vector3.new(6.8, 6, 0), 0.5, 3.6, ctx.accent, true)
+	post(ctx, sign, Vector3.new(6.8, 6.1, 0), 0.5, 2.2, WHITE)
+	post(ctx, sign, Vector3.new(6.8, 6.2, 0), 0.5, 0.9, ctx.primary, true)
+	light(parent:FindFirstChildWhichIsA("Part") :: Instance, ctx.accent, 1, 14)
+end
+
+function builders.hotair(ctx, parent)
+	cloudBase(ctx, parent, 8)
+	local balloon =
+		mover(ctx, parent, "ParkBob", Vector3.new(0, 0, 0), { BobAmount = 1.5, BobSpeed = 0.7, BobPhase = ctx.seed })
+	ball(ctx, balloon, Vector3.new(0, 13, 0), 11, ctx.primary)
+	ball(ctx, balloon, Vector3.new(0, 13, 0), 11.4, ctx.accent, true).Transparency = 0.55
+	for i = 0, 3 do -- stripes down the sides
+		local angle = i / 4 * math.pi * 2
+		box(
+			ctx,
+			balloon,
+			Vector3.new(math.cos(angle) * 5.3, 13, math.sin(angle) * 5.3),
+			Vector3.new(0.4, 8, 0.4),
+			WHITE
+		)
+	end
+	ball(ctx, balloon, Vector3.new(0, 7.6, 0), 3.2, ctx.primary) -- the skirt
+	box(ctx, balloon, Vector3.new(0, 2.4, 0), Vector3.new(3, 1.6, 3), Color3.fromRGB(190, 140, 90)) -- the basket
+	box(ctx, balloon, Vector3.new(0, 3.3, 0), Vector3.new(3.2, 0.3, 3.2), WHITE)
+	for _, x in { -1.2, 1.2 } do
+		for _, z in { -1.2, 1.2 } do
+			rod(ctx, balloon, Vector3.new(x, 3.2, z), Vector3.new(x * 0.5, 8, z * 0.5), 0.12, WHITE)
+		end
+	end
+	light(balloon:FindFirstChildWhichIsA("Part") :: Instance, ctx.primary, 1.2, 16)
+end
+
+function builders.stars(ctx, parent)
+	cloudBase(ctx, parent, 8)
+	post(ctx, parent, Vector3.new(0, 7.5, 0), 15, 0.7, WHITE)
+	ball(ctx, parent, Vector3.new(0, 15.2, 0), 1.6, ctx.accent, true)
+	local mobile = mover(ctx, parent, "ParkSpin", Vector3.new(0, 14, 0), { SpinSpeed = 0.5, SpinAxis = "Y" })
+	for i = 0, 4 do
+		local angle = i / 5 * math.pi * 2 + ctx.seed
+		local x, z = math.cos(angle) * 5.5, math.sin(angle) * 5.5
+		local y = 8 + (i % 3) * 1.6
+		rod(ctx, mobile, Vector3.new(0, 14, 0), Vector3.new(x, y + 2.2, z), 0.12, WHITE)
+		local color = if i % 2 == 0 then ctx.accent else ctx.primary
+		for _, turn in { 0, 60, 120 } do -- a star: three bars crossing
+			part(
+				ctx,
+				mobile,
+				{ Size = Vector3.new(0.5, 3.6, 0.5), Color = color, Material = Enum.Material.Neon },
+				Vector3.new(x, y, z),
+				CFrame.Angles(0, 0, math.rad(turn))
+			)
+		end
+		ball(ctx, mobile, Vector3.new(x, y, z), 1.2, WHITE, true)
+	end
+end
+
+function builders.cranes(ctx, parent)
+	cloudBase(ctx, parent, 9)
+	for _, x in { -9, 9 } do
+		box(ctx, parent, Vector3.new(x, 7, 0), Vector3.new(0.7, 14, 0.7), WHITE)
+		ball(ctx, parent, Vector3.new(x, 14.2, 0), 1.3, ctx.accent, true)
+	end
+	box(ctx, parent, Vector3.new(0, 13.6, 0), Vector3.new(18, 0.12, 0.12), WHITE)
+	for i = 0, 4 do
+		local x = -7 + i * 3.5
+		local y = 8.5 + (i % 2) * 1.2
+		local crane =
+			mover(ctx, parent, "ParkBob", Vector3.new(x, y, 0), { BobAmount = 0.7, BobSpeed = 1.1, BobPhase = i * 0.9 })
+		local color = if i % 3 == 0 then ctx.accent elseif i % 3 == 1 then ctx.primary else WHITE
+		rod(ctx, crane, Vector3.new(x, 13.6, 0), Vector3.new(x, y + 0.6, 0), 0.08, WHITE)
+		box(ctx, crane, Vector3.new(x, y, 0), Vector3.new(0.7, 0.7, 2.4), color, true) -- the body
+		box(ctx, crane, Vector3.new(x, y + 0.5, -1.5), Vector3.new(0.3, 0.9, 0.3), color, true) -- the neck
+		for _, side in { -1, 1 } do
+			part(
+				ctx,
+				crane,
+				{ Size = Vector3.new(2.6, 0.12, 1.8), Color = color },
+				Vector3.new(x + side * 1.2, y + 0.5, 0),
+				CFrame.Angles(0, 0, side * math.rad(-22))
+			)
+		end
+	end
+end
+
 -- Placing --------------------------------------------------------------------------------------------------------
 
 local built: { [Player]: { signature: string, folder: Folder } } = {}
