@@ -417,6 +417,21 @@ function TendFlow.start()
 		end)
 	end
 
+	-- Studio only: M raises the equipped spirit one level (a trait is rolled at Lv3 / 6 / 10).
+	if RunService:IsStudio() then
+		UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed or input.KeyCode ~= Enum.KeyCode.M then
+				return
+			end
+			local result = GardenState.call("devSpiritLevelUp")
+			if result.ok then
+				announceSpiritGrowth({ spiritGrowth = result })
+			else
+				Toast.show(result.reason or "not available")
+			end
+		end)
+	end
+
 	-- Studio only: B gives 3 Gift Boxes for the park.
 	if RunService:IsStudio() then
 		UserInputService.InputBegan:Connect(function(input, gameProcessed)

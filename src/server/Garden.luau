@@ -1304,6 +1304,24 @@ local function devLevelUp(s: Session): any
 	return { ok = true, level = level + 1, unlocked = Progression.seedsUnlockedAt(level + 1) }
 end
 
+-- Studio only: the equipped spirit jumps to its next level (a trait is rolled when it passes Lv3 / 6 / 10).
+local function devSpiritLevelUp(s: Session): any
+	if not RunService:IsStudio() then
+		return fail("not available")
+	end
+	local spirit = equippedSpiritInstance(s)
+	if not spirit then
+		return fail("equip a spirit first")
+	end
+	local level = Spirits.levelOf(spirit.xp)
+	if level >= Spirits.MaxLevel then
+		return fail("already at the max level")
+	end
+	local _, _, grown = Spirits.addXp(spirit, Spirits.LevelSteps[level + 1] - spirit.xp, math.random)
+	push(s)
+	return { ok = true, id = spirit.id, kind = spirit.kind, level = level + 1, leveledUp = true, traits = grown }
+end
+
 -- Studio only: gives coins so the shop, eggs and trading can be tried without waiting.
 local function devGrant(s: Session, payload: unknown): any
 	if not RunService:IsStudio() then
@@ -1594,6 +1612,8 @@ function Garden.start()
 			return devGrow(s)
 		elseif action == "devLevelUp" then
 			return devLevelUp(s)
+		elseif action == "devSpiritLevelUp" then
+			return devSpiritLevelUp(s)
 		elseif action == "devPlotPass" then
 			return devPlotPass(s)
 		elseif action == "devBoxes" then
