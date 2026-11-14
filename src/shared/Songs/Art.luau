@@ -20,7 +20,7 @@ return table.freeze({
 	metropolitan_expressway = image("110747535513328"),
 	naniwa_march = image("108135762307534"),
 	blue_samurai = image("83508184986174"),
-	shinjuku_deep_romance = image("116894024561150"),
+	shinjuku_deep_romance = image("104178620412622"),
 	yokohama_stars = image("116350374243444"),
 	popping_popping = image("120861416936660"),
 	good_morning_harajuku = image("120165436734457"),
