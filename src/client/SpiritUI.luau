@@ -71,29 +71,12 @@ local function rowsFor(
 	openNames: () -> ()
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
-	-- What is equipped right now, always at the top.
-	local equippedSpirit = nil
+	-- The equipped spirit's own row goes first (lit up with a check), then eggs and names, then the others.
+	local hasEquipped = false
 	for _, spirit in snapshot.spirits do
-		if spirit.id == snapshot.equippedSpirit then
-			equippedSpirit = spirit
-		end
+		hasEquipped = hasEquipped or spirit.id == snapshot.equippedSpirit
 	end
-	local equippedDef = if equippedSpirit then Spirits.get(equippedSpirit.kind) else nil
-	if equippedSpirit and equippedDef then
-		local ja = Lang.code == "ja"
-		local name = Spirits.nickname(equippedSpirit.nick, Lang.code)
-			or (if ja then equippedDef.name.ja else equippedDef.name.en)
-		local levelText, traitText = growthText(equippedSpirit)
-		table.insert(rows, {
-			note = true,
-			selected = true,
-			text = `{if ja then "\u{4E00}\u{7DD2}\u{306B}\u{3044}\u{308B}" else "With you now"}: {name}  {levelText}{if traitText
-					~= ""
-				then `  \u{2728} {traitText}`
-				else ""}`,
-		})
-		table.insert(rows, { note = true, text = "Tap the equipped one again to put it away" })
-	elseif #snapshot.spirits > 0 then
+	if not hasEquipped and #snapshot.spirits > 0 then
 		table.insert(rows, { note = true, text = "No spirit is with you. Tap one below to equip it" })
 	end
 	if snapshot.eggs > 0 then
@@ -161,7 +144,7 @@ local function rowsFor(
 			local called = Spirits.nickname(spirit.nick, Lang.code) or def.name.en
 			local title = Lang.t(if equipped then `Equipped: {called}` else `Equip {called}`)
 			local levelText, traitText = growthText(spirit)
-			table.insert(rows, {
+			local row: ListModal.Row = {
 				text = `{hearts(spirit.bond)}  {title}  {levelText}{if group.count > 1
 					then `  \u{00D7}{group.count}`
 					else ""}\n{effectText(def)}{if traitText ~= "" then `\n\u{2728} {traitText}` else ""}`,
@@ -171,7 +154,8 @@ local function rowsFor(
 				onTap = function()
 					return equip(if equipped then nil else spirit.id)
 				end,
-			})
+			}
+			table.insert(rows, if equipped then 1 else #rows + 1, row)
 		end
 	end
 	return rows
