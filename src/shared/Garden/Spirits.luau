@@ -214,6 +214,164 @@ function Spirits.bondLevel(bond: number): number
 	return level
 end
 
+-- Growth. The equipped spirit earns growth points (xp) from every tend. Levels make it bigger; at some levels it
+-- also grows a random trait: a look (glow, sparkles, ribbon, wings, rainbow, bigger) or a ride (cloud, balloon, skate).
+-- Which traits a spirit gets is luck, so two spirits of the same kind turn out different. Growth is for show: it does
+-- not change what a spirit does for the garden.
+Spirits.LevelSteps = table.freeze({ 0, 10, 30, 60, 100, 160, 240, 350, 500, 700 }) -- xp needed for level 1..10
+Spirits.MaxLevel = #Spirits.LevelSteps
+Spirits.MaxXp = 1000000
+Spirits.TraitLevels = table.freeze({ 3, 6, 10 }) -- reaching one of these levels rolls a new trait
+
+export type TraitKind = "Look" | "Ride"
+export type Trait = {
+	id: string, -- stored and sent in attributes: letters and digits only
+	name: { en: string, ja: string },
+	kind: TraitKind,
+	weight: number,
+}
+
+local traitList: { Trait } = {
+	{ id = "Glow", name = { en = "Glow", ja = "ひかる" }, kind = "Look", weight = 30 },
+	{ id = "Sparkle", name = { en = "Sparkle", ja = "きらきら" }, kind = "Look", weight = 24 },
+	{ id = "Big", name = { en = "Big", ja = "おおきい" }, kind = "Look", weight = 24 },
+	{ id = "Ribbon", name = { en = "Ribbon", ja = "リボン" }, kind = "Look", weight = 18 },
+	{ id = "Wings", name = { en = "Wings", ja = "はね" }, kind = "Look", weight = 14 },
+	{ id = "Rainbow", name = { en = "Rainbow", ja = "にじいろ" }, kind = "Look", weight = 5 },
+	{ id = "Cloud", name = { en = "Cloud Ride", ja = "くものりもの" }, kind = "Ride", weight = 9 },
+	{ id = "Balloon", name = { en = "Balloon Ride", ja = "ふうせん" }, kind = "Ride", weight = 8 },
+	{ id = "Skate", name = { en = "Skateboard", ja = "スケボー" }, kind = "Ride", weight = 8 },
+}
+Spirits.Traits = table.freeze(traitList)
+
+local traitById: { [string]: Trait } = {}
+for _, trait in traitList do
+	traitById[trait.id] = trait
+end
+
+function Spirits.trait(id: string): Trait?
+	return traitById[id]
+end
+
+-- 1..MaxLevel for an xp value.
+function Spirits.levelOf(xp: number): number
+	local level = 1
+	for i, need in Spirits.LevelSteps do
+		if xp >= need then
+			level = i
+		end
+	end
+	return level
+end
+
+local DIFFICULTY_XP = { Easy = 1, Normal = 1.2, Hard = 1.5, Expert = 1.8 } :: { [string]: number }
+
+-- The xp a tend gives: more for a better run and for a harder chart (about 2 to 9).
+function Spirits.xpForTend(accuracy: number, difficulty: string): number
+	return math.max(1, math.round((2 + 4 * math.clamp(accuracy, 0, 1)) * (DIFFICULTY_XP[difficulty] or 1)))
+end
+
+-- The size of a spirit as a factor of the normal one.
+function Spirits.sizeFactor(level: number, traits: { string }): number
+	local size = 1 + 0.045 * (math.clamp(level, 1, Spirits.MaxLevel) - 1)
+	if table.find(traits, "Big") then
+		size += 0.18
+	end
+	return size
+end
+
+-- Picks a trait the spirit does not have yet (one ride at most), by weight. nil when nothing is left to give.
+-- `random` returns a number in [0, 1).
+function Spirits.rollTrait(owned: { string }, random: () -> number): string?
+	local hasRide = false
+	for _, id in owned do
+		local trait = traitById[id]
+		if trait and trait.kind == "Ride" then
+			hasRide = true
+		end
+	end
+	local pool: { Trait } = {}
+	local total = 0
+	for _, trait in traitList do
+		if not table.find(owned, trait.id) and not (hasRide and trait.kind == "Ride") then
+			table.insert(pool, trait)
+			total += trait.weight
+		end
+	end
+	if total <= 0 then
+		return nil
+	end
+	local roll = random() * total
+	for _, trait in pool do
+		roll -= trait.weight
+		if roll < 0 then
+			return trait.id
+		end
+	end
+	return pool[#pool].id
+end
+
+-- Adds xp to a spirit (anything with xp and traits). Returns the new level, whether it went up and the traits it
+-- grew on the way (a big gain can pass several trait levels).
+function Spirits.addXp(
+	spirit: { xp: number, traits: { string } },
+	gained: number,
+	random: () -> number
+): (number, boolean, { string })
+	local before = Spirits.levelOf(spirit.xp)
+	spirit.xp = math.min(Spirits.MaxXp, spirit.xp + math.max(0, gained))
+	local after = Spirits.levelOf(spirit.xp)
+	local grown: { string } = {}
+	for _, at in Spirits.TraitLevels do
+		if before < at and after >= at then
+			local id = Spirits.rollTrait(spirit.traits, random)
+			if id then
+				table.insert(spirit.traits, id)
+				table.insert(grown, id)
+			end
+		end
+	end
+	return after, after > before, grown
+end
+
+-- A spirit as one text entry for the player attributes the clients draw from:
+-- "id:kind:bond:nick:level:Trait+Trait" (older values stop after the nick).
+function Spirits.encode(
+	spirit: { id: string, kind: string, bond: number, nick: number?, xp: number?, traits: { string }? }
+): string
+	return `{spirit.id}:{spirit.kind}:{spirit.bond}:{spirit.nick or 0}:{Spirits.levelOf(spirit.xp or 0)}:{table.concat(
+		spirit.traits or {},
+		"+"
+	)}`
+end
+
+export type Entry = { id: string, kind: string, bond: number, nick: number, level: number, traits: { string } }
+
+function Spirits.decode(text: string): Entry?
+	local id, kind, bond, nick, level, traitText = string.match(text, "^([^:]+):([^:]+):(%d+):(%d*):(%d*):([%w+]*)$")
+	if not id then
+		id, kind, bond, nick = string.match(text, "^([^:]+):([^:]+):(%d+):?(%d*)$")
+		level, traitText = "1", ""
+	end
+	if not id or not kind or not Spirits.get(kind) then
+		return nil
+	end
+	local traits: { string } = {}
+	for name in string.gmatch(traitText or "", "[^+]+") do
+		if traitById[name] and not table.find(traits, name) then
+			table.insert(traits, name)
+		end
+	end
+	return {
+		id = id,
+		kind = kind,
+		bond = tonumber(bond) or 0,
+		nick = tonumber(nick) or 0,
+		level = math.clamp(tonumber(level) or 1, 1, Spirits.MaxLevel),
+		traits = traits,
+	}
+end
+
 local byKind: { [string]: Def } = {}
 for _, def in list do
 	byKind[def.kind] = def

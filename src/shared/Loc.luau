@@ -273,6 +273,8 @@ local TEMPLATES: { { string } } = {
 	},
 	{ "New missions in {} hours", "新しいミッションまで、あと約 {1} 時間" },
 	{ "{} likes you more!", "{1} が、もっとなついたよ！" },
+	{ "{} grew to Lv {}!", "{1} が Lv {2} に成長したよ！" },
+	{ "{} learned a new look: {}!", "{1} に新しい姿「{2}」がついたよ！" },
 	{ "Pet your spirits {} times", "スピリットを {1} 回、なでよう" },
 	-- spirits' effects
 	{ " / mutations x{}", " / 変異率 x{1}" },

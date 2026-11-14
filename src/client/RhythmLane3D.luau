@@ -17,6 +17,9 @@ local RhythmEngine = require(ReplicatedStorage.Shared.RhythmEngine)
 local HitSounds = require(script.Parent.HitSounds)
 local RhythmOverlay = require(script.Parent.RhythmOverlay)
 local Lang = require(script.Parent.Lang)
+local GardenState = require(script.Parent.GardenState)
+local SpiritModel = require(script.Parent.SpiritModel)
+local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local UiTheme = require(script.Parent.UiTheme)
 
 local RhythmLane3D = {}
@@ -752,6 +755,28 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		end)
 	end
 
+	-- The equipped spirit cheers beside the lane: it hops on every beat, jumps higher on a Perfect and spins at every
+	-- 10 combo. What it has grown (size, glow, ride ...) is on it.
+	local cheerModel: Model? = nil
+	local cheerBase = origin * CFrame.new(-(LANE_WIDTH * 2 + 4.2), 0, -1) * CFrame.Angles(0, math.pi, 0)
+	local cheerRainbow: BasePart? = nil
+	local cheerHopUntil = 0
+	local cheerSpinUntil = 0
+	local snapshot = GardenState.get()
+	if snapshot and snapshot.equippedSpirit then
+		for _, spirit in snapshot.spirits do
+			if spirit.id == snapshot.equippedSpirit and Spirits.get(spirit.kind) then
+				local traits = spirit.traits or {}
+				local model = SpiritModel.create(spirit.kind, traits)
+				model:ScaleTo(1.1 * Spirits.sizeFactor(Spirits.levelOf(spirit.xp or 0), traits))
+				model:PivotTo(cheerBase)
+				model.Parent = folder
+				cheerModel = model
+				cheerRainbow = model:FindFirstChild("RainbowRing") :: BasePart?
+			end
+		end
+	end
+
 	-- Every 10 combos: a big "N COMBO!" springs in at the top of the screen in a new colour each time, and a
 	-- gold ring bursts out of every lane. 50 and 100 are bigger still.
 	local comboBurst = make("TextLabel", {
@@ -770,6 +795,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 	local comboBurstScale = make("UIScale", { Scale = 1 }, comboBurst) :: UIScale
 	local burstToken = 0
 	local function celebrateCombo(combo: number)
+		cheerSpinUntil = os.clock() + 0.7
 		burstToken += 1
 		local token = burstToken
 		local hue = Palette.Hues[Palette.LaneOrder[(combo // 10 - 1) % #Palette.LaneOrder + 1]]
@@ -862,6 +888,9 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			if hit.judgement ~= "Miss" then
 				hitFx(lane, hit.judgement)
 				hitSounds.play(hit.judgement)
+				if hit.judgement == "Perfect" then
+					cheerHopUntil = os.clock() + 0.4
+				end
 				if hit.combo >= 10 and hit.combo % 10 == 0 then
 					celebrateCombo(hit.combo)
 				end
@@ -929,6 +958,22 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		if os.clock() >= nextCorridorScan then
 			nextCorridorScan = os.clock() + 0.5
 			hideCorridor()
+		end
+
+		local cheering = cheerModel
+		if cheering then
+			local clock = os.clock()
+			local beatPos = (now - firstNoteMs) / (60000 / (options.bpm or 120))
+			local height = math.abs(math.sin(beatPos * math.pi)) * 0.7
+			if clock < cheerHopUntil then
+				height += math.sin((1 - (cheerHopUntil - clock) / 0.4) * math.pi) * 1.6
+			end
+			local spin = if clock < cheerSpinUntil then (1 - (cheerSpinUntil - clock) / 0.7) * math.pi * 2 else 0
+			cheering:PivotTo(cheerBase * CFrame.new(0, height, 0) * CFrame.Angles(0, spin, 0))
+			local ring = cheerRainbow
+			if ring then
+				ring.Color = Color3.fromHSV((clock * 0.25) % 1, 0.65, 1)
+			end
 		end
 
 		if #tiles > 0 then

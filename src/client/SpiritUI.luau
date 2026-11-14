@@ -24,6 +24,20 @@ local function hearts(bond: number?): string
 	return string.rep("\u{2665}", level) .. string.rep("\u{2661}", Spirits.MaxBondLevel - level)
 end
 
+-- "Lv 3" and, when it has grown any, the names of its traits: "Glow, Cloud Ride".
+local function growthText(spirit: { xp: number?, traits: { string }? }): (string, string)
+	local level = Spirits.levelOf(spirit.xp or 0)
+	local names: { string } = {}
+	local owned: { string } = if spirit.traits then spirit.traits else {}
+	for _, id in owned do
+		local trait = Spirits.trait(id)
+		if trait then
+			table.insert(names, if Lang.code == "ja" then trait.name.ja else trait.name.en)
+		end
+	end
+	return `Lv {level}`, table.concat(names, ", ")
+end
+
 -- One short line: "Tends every 60s (+6) / mutations x1.3".
 local function effectText(def: Spirits.Def): string
 	local text = Lang.t(`Tends every {def.autoCareSeconds}s (+{def.autoCarePoints})`)
@@ -89,7 +103,13 @@ local function rowsFor(
 		if spirit.id == snapshot.equippedSpirit then
 			group.equipped = true
 			group.best = spirit
-		elseif not group.equipped and (spirit.bond or 0) > (group.best.bond or 0) then
+		elseif
+			not group.equipped
+			and (
+				(spirit.xp or 0) > (group.best.xp or 0)
+				or ((spirit.xp or 0) == (group.best.xp or 0) and (spirit.bond or 0) > (group.best.bond or 0))
+			)
+		then
 			group.best = spirit
 		end
 	end
@@ -110,10 +130,11 @@ local function rowsFor(
 			local equipped = group.equipped
 			local called = Spirits.nickname(spirit.nick, Lang.code) or def.name.en
 			local title = Lang.t(if equipped then `Equipped: {called}` else `Equip {called}`)
+			local levelText, traitText = growthText(spirit)
 			table.insert(rows, {
-				text = `{hearts(spirit.bond)}  {title}{if group.count > 1 then `  \u{00D7}{group.count}` else ""}\n{effectText(
-					def
-				)}`,
+				text = `{hearts(spirit.bond)}  {title}  {levelText}{if group.count > 1
+					then `  \u{00D7}{group.count}`
+					else ""}\n{effectText(def)}{if traitText ~= "" then `\n\u{2728} {traitText}` else ""}`,
 				color = if equipped then Palette.Hues.Yuzu.Night else nil,
 				selected = equipped,
 				icon = { kind = "spirit", id = group.kind },
@@ -207,7 +228,9 @@ function SpiritUI.start()
 			if def then
 				local called = Spirits.nickname(spirit.nick, Lang.code)
 				table.insert(rows, {
-					text = `{hearts(spirit.bond)}  {def.name.en}{if called then `  \u{300C}{called}\u{300D}` else ""}`,
+					text = `{hearts(spirit.bond)}  {def.name.en}  Lv {Spirits.levelOf(spirit.xp or 0)}{if called
+						then `  \u{300C}{called}\u{300D}`
+						else ""}`,
 					selected = spirit.id == snapshot.equippedSpirit,
 					icon = { kind = "spirit", id = spirit.kind },
 					onTap = function()

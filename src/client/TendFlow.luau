@@ -24,6 +24,8 @@ local Plots = require(ReplicatedStorage.Shared.Garden.Plots)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Songs = require(ReplicatedStorage.Shared.Songs)
+local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
+local Lang = require(script.Parent.Lang)
 local SongArt = require(ReplicatedStorage.Shared.Songs.Art)
 local Toast = require(script.Parent.Toast)
 local TipsUI = require(script.Parent.TipsUI)
@@ -49,6 +51,29 @@ local function announceLevelUp(result: any)
 		Toast.show(`Garden Lv {result.level}!  New seed in the shop: {table.concat(names, ", ")}`)
 	else
 		Toast.show(`Garden Lv {result.level}!`)
+	end
+end
+
+-- The equipped spirit grew with this tend: a level, and at some levels a random trait (a look or a ride).
+local function announceSpiritGrowth(result: any)
+	local growth = result.spiritGrowth
+	if not growth then
+		return
+	end
+	local def = Spirits.get(growth.kind)
+	if not def then
+		return
+	end
+	local ja = Lang.code == "ja"
+	local name = if ja then def.name.ja else def.name.en
+	if growth.leveledUp then
+		Toast.show(`{name} grew to Lv {growth.level}!`)
+	end
+	for _, id in growth.traits or {} do
+		local trait = Spirits.trait(id)
+		if trait then
+			Toast.show(`{name} learned a new look: {if ja then trait.name.ja else trait.name.en}!`)
+		end
 	end
 end
 
@@ -129,6 +154,7 @@ function TendFlow.start()
 				}, function()
 					setPromptsEnabled(true)
 					announceLevelUp(result)
+					announceSpiritGrowth(result)
 				end)
 			else
 				setPromptsEnabled(true)

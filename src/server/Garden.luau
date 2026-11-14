@@ -141,6 +141,19 @@ local function fractionOf(s: Session, plot: Growth.Plot, now: number): number
 	return Growth.fraction(plot, growSecondsOf(s, plot), now)
 end
 
+local function equippedSpiritInstance(s: Session): PlayerData.SpiritInstance?
+	local d = data(s)
+	if not d.equippedSpirit then
+		return nil
+	end
+	for _, spirit in d.spirits do
+		if spirit.id == d.equippedSpirit then
+			return spirit
+		end
+	end
+	return nil
+end
+
 local function equippedSpiritDef(s: Session): Spirits.Def?
 	local d = data(s)
 	if not d.equippedSpirit then
@@ -368,14 +381,14 @@ local function syncPets(s: Session)
 	local parts: { string } = {}
 	for i = 1, math.min(#list, Spirits.MaxPets) do
 		local spirit = list[i].spirit
-		table.insert(parts, `{spirit.id}:{spirit.kind}:{spirit.bond}:{spirit.nick or 0}`)
+		table.insert(parts, Spirits.encode(spirit))
 	end
 	s.player:SetAttribute("Pets", table.concat(parts, ","))
 	-- The equipped spirit follows its player around ("id:kind:bond:nick", or empty).
 	local follower = ""
 	for _, spirit in d.spirits do
 		if spirit.id == d.equippedSpirit then
-			follower = `{spirit.id}:{spirit.kind}:{spirit.bond}:{spirit.nick or 0}`
+			follower = Spirits.encode(spirit)
 		end
 	end
 	s.player:SetAttribute("Follower", follower)
@@ -829,6 +842,22 @@ local function tendSubmit(s: Session, payload: unknown): any
 	local tendProgress = { xp = d.xp, mastery = d.mastery }
 	local tendLevelUp, tendUnlocked, tendLevel = Progression.applyTend(tendProgress, tally.accuracy)
 	d.xp = tendProgress.xp
+	-- The equipped spirit grows with every tend; at some levels it grows a random trait.
+	local growth: any = nil
+	local growing = equippedSpiritInstance(s)
+	if growing then
+		local gained = Spirits.xpForTend(tally.accuracy, pending.difficulty)
+		local level, leveledUp, grown = Spirits.addXp(growing, gained, math.random)
+		growth = {
+			id = growing.id,
+			kind = growing.kind,
+			xp = growing.xp,
+			gained = gained,
+			level = level,
+			leveledUp = leveledUp,
+			traits = grown,
+		}
+	end
 	refresh(s)
 	push(s)
 
@@ -852,6 +881,7 @@ local function tendSubmit(s: Session, payload: unknown): any
 		level = tendLevel,
 		leveledUp = tendLevelUp,
 		unlocked = tendUnlocked,
+		spiritGrowth = growth,
 	}
 end
 
@@ -1061,7 +1091,7 @@ local function hatch(s: Session): any
 	d.eggs -= 1
 	local kind = Spirits.hatch(math.random)
 	local id = HttpService:GenerateGUID(false)
-	table.insert(d.spirits, { id = id, kind = kind, bond = 0 })
+	table.insert(d.spirits, { id = id, kind = kind, bond = 0, xp = 0, traits = {} })
 	push(s)
 	print(`[Garden] {s.player.Name}: hatched {kind}`)
 	return { ok = true, kind = kind, id = id }

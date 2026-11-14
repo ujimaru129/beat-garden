@@ -29,6 +29,10 @@ type Pet = {
 	kind: string,
 	bond: number,
 	nick: number,
+	level: number,
+	traits: { string },
+	sig: string, -- level and traits: when it changes the model is built again
+	rainbow: BasePart?,
 	model: Model,
 	owner: Player,
 	follow: boolean,
@@ -176,7 +180,12 @@ local function patPet(pet: Pet)
 	end)
 end
 
-local function createPet(owner: Player, id: string, kind: string, bond: number, nick: number, follow: boolean): Pet?
+local function signature(entry: Spirits.Entry): string
+	return `{entry.kind}:{entry.level}:{table.concat(entry.traits, "+")}`
+end
+
+local function createPet(owner: Player, entry: Spirits.Entry, follow: boolean): Pet?
+	local id, kind, bond, nick = entry.id, entry.kind, entry.bond, entry.nick
 	local start: Vector3
 	if follow then
 		local feet = feetOf(owner)
@@ -192,7 +201,7 @@ local function createPet(owner: Player, id: string, kind: string, bond: number, 
 		local rng = Random.new(#id * 31 + bond)
 		start = center + Vector3.new(rng:NextNumber(-12, 12), 0, rng:NextNumber(-12, 12))
 	end
-	local model = SpiritModel.create(kind)
+	local model = SpiritModel.create(kind, entry.traits)
 	local own = owner == Players.LocalPlayer
 	local hitbox: Part? = nil
 	if own then
@@ -211,13 +220,17 @@ local function createPet(owner: Player, id: string, kind: string, bond: number, 
 		box.CFrame = model:GetPivot() * CFrame.new(0, 2.2, 0)
 		box.Parent = model
 	end
-	model:ScaleTo(0.8)
+	model:ScaleTo(0.8 * Spirits.sizeFactor(entry.level, entry.traits))
 	local rng = Random.new(#id * 17 + bond)
 	local pet: Pet = {
 		id = id,
 		kind = kind,
 		bond = bond,
 		nick = nick,
+		level = entry.level,
+		traits = entry.traits,
+		sig = signature(entry),
+		rainbow = model:FindFirstChild("RainbowRing") :: BasePart?,
 		model = model,
 		owner = owner,
 		follow = follow,
@@ -247,31 +260,22 @@ local function removePet(pet: Pet)
 	pet.model:Destroy()
 end
 
--- "id:kind:bond:nick" (the nick is optional in old values).
-local function parseEntry(entry: string): (string?, string?, number, number)
-	local id, kind, bond, nick = string.match(entry, "^([^:]+):([^:]+):(%d+):?(%d*)$")
-	if not id or not kind or not Spirits.get(kind) then
-		return nil, nil, 0, 0
-	end
-	return id, kind, tonumber(bond) or 0, tonumber(nick) or 0
-end
-
 -- Reads a player's "Pets" attribute and makes the roaming pets match it.
 local function sync(owner: Player)
 	local value = owner:GetAttribute("Pets")
-	local wanted: { [string]: { kind: string, bond: number, nick: number } } = {}
+	local wanted: { [string]: Spirits.Entry } = {}
 	if type(value) == "string" then
-		for entry in string.gmatch(value, "[^,]+") do
-			local id, kind, bond, nick = parseEntry(entry)
-			if id and kind then
-				wanted[id] = { kind = kind, bond = bond, nick = nick }
+		for text in string.gmatch(value, "[^,]+") do
+			local entry = Spirits.decode(text)
+			if entry then
+				wanted[entry.id] = entry
 			end
 		end
 	end
 	local mine = pets[owner] or {}
 	pets[owner] = mine
 	for id, pet in mine do
-		if not wanted[id] or wanted[id].kind ~= pet.kind then
+		if not wanted[id] or signature(wanted[id]) ~= pet.sig then
 			removePet(pet)
 			mine[id] = nil
 		end
@@ -285,7 +289,7 @@ local function sync(owner: Player)
 				setTag(pet)
 			end
 		else
-			local created = createPet(owner, id, info.kind, info.bond, info.nick, false)
+			local created = createPet(owner, info, false)
 			if created then
 				mine[id] = created
 			end
@@ -296,24 +300,21 @@ end
 -- Reads "Follower": the equipped spirit.
 local function syncFollower(owner: Player)
 	local value = owner:GetAttribute("Follower")
-	local id, kind, bond, nick = nil, nil, 0, 0
-	if type(value) == "string" and value ~= "" then
-		id, kind, bond, nick = parseEntry(value)
-	end
+	local entry = if type(value) == "string" and value ~= "" then Spirits.decode(value) else nil
 	local current = followers[owner]
-	if current and (id ~= current.id or kind ~= current.kind) then
+	if current and (not entry or entry.id ~= current.id or signature(entry) ~= current.sig) then
 		removePet(current)
 		followers[owner] = nil
 		current = nil
 	end
-	if current then
-		current.bond = bond
-		if current.nick ~= nick then
-			current.nick = nick
+	if current and entry then
+		current.bond = entry.bond
+		if current.nick ~= entry.nick then
+			current.nick = entry.nick
 			setTag(current)
 		end
-	elseif id and kind then
-		local created = createPet(owner, id, kind, bond, nick, true)
+	elseif entry then
+		local created = createPet(owner, entry, true)
 		if created then
 			followers[owner] = created
 		end
@@ -366,6 +367,19 @@ function PetFx.start()
 		return (math.sin(now * 2 + pet.phase) * 0.5 + 0.5) * 0.12
 	end
 
+	-- A rainbow spirit's ring cycles through the colours.
+	local function tint(pet: Pet, now: number)
+		local ring = pet.rainbow
+		if ring then
+			local color = Color3.fromHSV((now * 0.25 + pet.phase) % 1, 0.65, 1)
+			ring.Color = color
+			local light = ring:FindFirstChildOfClass("PointLight")
+			if light then
+				light.Color = color
+			end
+		end
+	end
+
 	local since = 0
 	RunService.RenderStepped:Connect(function(dt: number)
 		local camera = Workspace.CurrentCamera
@@ -416,6 +430,7 @@ function PetFx.start()
 				pet.model:PivotTo(
 					CFrame.new(pet.position + Vector3.new(0, hopOf(pet, now), 0)) * CFrame.Angles(0, pet.heading, 0)
 				)
+				tint(pet, now)
 			end
 		end
 
@@ -447,6 +462,7 @@ function PetFx.start()
 			pet.model:PivotTo(
 				CFrame.new(pet.position + Vector3.new(0, hopOf(pet, now), 0)) * CFrame.Angles(0, pet.heading, 0)
 			)
+			tint(pet, now)
 		end
 	end)
 end

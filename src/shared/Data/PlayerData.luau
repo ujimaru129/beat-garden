@@ -26,6 +26,8 @@ export type SpiritInstance = {
 	kind: string, -- Spirits kind
 	bond: number, -- how much it has been petted (Spirits.bondLevel)
 	nick: number?, -- the number of the name the player gave it (Spirits.Nicknames)
+	xp: number, -- growth points from tends while equipped (Spirits.levelOf)
+	traits: { string }, -- what it has grown (Spirits.Traits ids)
 }
 
 export type Data = {
@@ -65,6 +67,26 @@ local function num(v: any, default: number, lo: number?, hi: number?): number
 		return default
 	end
 	return math.clamp(v, lo or -math.huge, hi or math.huge)
+end
+
+-- The traits of a saved spirit: known ids only, no repeats, one ride at most, no more than the game gives.
+local function cleanTraits(raw: any): { string }
+	local out: { string } = {}
+	if type(raw) ~= "table" then
+		return out
+	end
+	local hasRide = false
+	for _, id in raw do
+		local trait = if type(id) == "string" then Spirits.trait(id) else nil
+		if trait and #out < #Spirits.TraitLevels and not table.find(out, trait.id) then
+			local isRide = trait.kind == "Ride"
+			if not (isRide and hasRide) then
+				table.insert(out, trait.id)
+				hasRide = hasRide or isRide
+			end
+		end
+	end
+	return out
 end
 
 function PlayerData.new(): Data
@@ -191,6 +213,8 @@ function PlayerData.sanitize(raw: any): Data
 							and Spirits.Nicknames[math.floor(spirit.nick)] ~= nil
 						then math.floor(spirit.nick)
 						else nil,
+					xp = math.floor(num(spirit.xp, 0, 0, Spirits.MaxXp)),
+					traits = cleanTraits(spirit.traits),
 				})
 			end
 		end

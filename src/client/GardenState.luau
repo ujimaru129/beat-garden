@@ -24,7 +24,7 @@ export type Snapshot = {
 	persistent: boolean,
 	tutorialStep: number,
 	eggs: number,
-	spirits: { { id: string, kind: string, bond: number? } },
+	spirits: { { id: string, kind: string, bond: number?, nick: number?, xp: number?, traits: { string }? } },
 	equippedSpirit: string?,
 	collection: { [string]: boolean },
 	sellMult: number, -- the equipped spirit's bonus on selling
