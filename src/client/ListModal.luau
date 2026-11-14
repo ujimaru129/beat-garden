@@ -36,6 +36,12 @@ export type Modal = {
 	isOpen: () -> boolean,
 	setTitle: (title: string) -> (),
 	setRows: (rows: { Row }) -> (),
+	-- A fixed area under the title that does not scroll (the Park's lots). Fill `header`, then give it its height
+	-- (0 = none): the list moves down to make room.
+	header: Frame,
+	setHeaderHeight: (height: number) -> (),
+	-- Thinner rows and smaller text, for a long list that is scrolled a lot (the Park's items).
+	setCompact: (on: boolean) -> (),
 }
 
 local ROW_HEIGHT = 52
@@ -204,6 +210,26 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	ScrollThumb.attach(list, panel, UDim2.new(1, -6, 0, 68), UDim2.new(0, 5, 1, -84))
 
+	local header = make("Frame", {
+		Name = "Header",
+		Position = UDim2.fromOffset(12, 60),
+		Size = UDim2.new(1, -24, 0, 0),
+		BackgroundTransparency = 1,
+		Visible = false,
+	}, panel) :: Frame
+	local function setHeaderHeight(height: number)
+		header.Size = UDim2.new(1, -24, 0, height)
+		header.Visible = height > 0
+		local gap = if height > 0 then height + 6 else 0
+		list.Position = UDim2.fromOffset(12, 64 + gap)
+		list.Size = UDim2.new(1, -24, 1, -76 - gap)
+		local track = panel:FindFirstChild("ScrollTrack")
+		if track and track:IsA("GuiObject") then
+			track.Position = UDim2.new(1, -6, 0, 68 + gap)
+			track.Size = UDim2.new(0, 5, 1, -84 - gap)
+		end
+	end
+
 	-- Flick / drag scrolling done by hand: the rows are buttons and swallow the touch, so the built-in
 	-- scrolling does not start when the finger lands on a row. A drag past a few pixels also cancels the tap.
 	list.ScrollingEnabled = false
@@ -275,6 +301,19 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 
 	local modal: Modal
 
+	local rowHeight, maxText, minText, noteText, noteMin = ROW_HEIGHT, MAX_TEXT, MIN_TEXT, NOTE_TEXT, NOTE_MIN_HEIGHT
+	local layout = list:FindFirstChildOfClass("UIListLayout")
+	local function setCompact(on: boolean)
+		rowHeight = if on then 36 else ROW_HEIGHT
+		maxText = if on then 20 else MAX_TEXT
+		minText = if on then 14 else MIN_TEXT
+		noteText = if on then 14 else NOTE_TEXT
+		noteMin = if on then 24 else NOTE_MIN_HEIGHT
+		if layout then
+			layout.Padding = UDim.new(0, if on then 4 else 8)
+		end
+	end
+
 	-- All rows share one text size: the biggest size at which the longest row still fits on one line, but never
 	-- smaller than MIN_TEXT. A row that is still too long wraps onto a second line and its row grows to fit.
 	-- (TextScaled would give every row its own size, so a short name would look bigger than a long one.)
@@ -284,14 +323,14 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	local pendingFlash: { index: number, color: Color3, expires: number }? = nil
 	local function applyTextSize()
 		local width = (if list.AbsoluteSize.X > 40 then list.AbsoluteSize.X else 480) - 8 - 28 - 12
-		local best = MAX_TEXT
+		local best = maxText
 		for _, row in rowButtons do
 			if row.note then
 				continue
 			end
 			local size = best
 			local rowWidth = width - (if row.icon then ICON_SPACE else 0)
-			while size > MIN_TEXT do
+			while size > minText do
 				local bounds =
 					TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(rowWidth, math.huge))
 				if bounds.Y <= size * 1.4 then
@@ -302,7 +341,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			best = math.min(best, size)
 		end
 		for _, row in rowButtons do
-			local size = if row.note then NOTE_TEXT else best
+			local size = if row.note then noteText else best
 			row.button.TextScaled = false
 			row.button.TextWrapped = true
 			row.button.TextSize = size
@@ -310,7 +349,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			local rowWidth = width - (if row.icon then ICON_SPACE else 0)
 			local bounds = TextService:GetTextSize(row.text, size, row.button.Font, Vector2.new(rowWidth, math.huge))
 			local height = math.ceil(bounds.Y / 0.56)
-			local minimum = if row.note then NOTE_MIN_HEIGHT elseif row.icon then ICON_ROW_HEIGHT else ROW_HEIGHT
+			local minimum = if row.note then noteMin elseif row.icon then ICON_ROW_HEIGHT else rowHeight
 			row.button.Size = UDim2.new(1, -8, 0, math.max(minimum, height))
 		end
 	end
@@ -355,6 +394,9 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			end) -- the list has its real size once it is shown
 		end,
 		close = close,
+		header = header,
+		setHeaderHeight = setHeaderHeight,
+		setCompact = setCompact,
 		isOpen = function()
 			return gui.Enabled
 		end,
@@ -377,7 +419,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 				local tappable = row.onTap ~= nil
 				local button = make("TextButton", {
 					LayoutOrder = i,
-					Size = UDim2.new(1, -8, 0, ROW_HEIGHT),
+					Size = UDim2.new(1, -8, 0, rowHeight),
 					AutoButtonColor = tappable,
 					Active = tappable,
 					Text = Lang.t(row.text),

@@ -18,10 +18,17 @@ local UiTheme = require(script.Parent.UiTheme)
 
 local ParkUI = {}
 
-type View = { kind: "main" } | { kind: "goals" } | { kind: "daily" } | { kind: "pick", lotId: string }
+type View = { kind: "main" } | { kind: "goals" } | { kind: "daily" }
+
+local HEADER_HEIGHT = 74 -- the fixed row of lots
 
 local function nameOf(attraction: Park.Attraction): string
 	return if Lang.code == "ja" then attraction.name.ja else attraction.name.en
+end
+
+local function kindOf(key: string): string
+	local attraction = Park.parseKey(key)
+	return if attraction then attraction.kind else "ground"
 end
 
 -- "Carousel (Sakura)" for an item key.
@@ -33,12 +40,9 @@ local function itemText(key: string): string
 	return `{nameOf(attraction)} ({palette})`
 end
 
-local function paletteColor(key: string): Color3?
-	local _, palette = Park.parseKey(key)
-	if palette and Palette.Hues[palette] then
-		return Palette.Hues[palette].Night
-	end
-	return if palette == "Rainbow" then Palette.Hues.Sakura.Night else nil
+-- Ground lots and things are green, sky lots and things are pink: a colour only fits its own colour.
+local function kindColor(kind: string): Color3
+	return if kind == "ground" then Palette.Hues.Matcha.Night else Palette.Hues.Sakura.Night
 end
 
 -- "Ground lot 2" / "Sky lot 1": the lot's number counts within its kind.
@@ -60,6 +64,7 @@ function ParkUI.start()
 	local modal = ListModal.create("Park", function()
 		ProximityPromptService.Enabled = true
 	end)
+	modal.setCompact(true) -- thin rows: the item list is long
 	local view: View = { kind = "main" }
 
 	local gui = Instance.new("ScreenGui")
@@ -97,14 +102,126 @@ function ParkUI.start()
 		return true
 	end
 
+	-- The empty lot that the next item goes into (tapped in the fixed row at the top).
+	local selectedLot: string? = nil
+	local header = modal.header
+	local tiles: { [string]: TextButton } = {}
+
+	local function lotName(lot: Park.Lot): string
+		local _, number = lotLabel(lot)
+		return if Lang.code == "ja"
+			then `{if lot.kind == "ground" then "\u{5730}\u{4E0A}" else "\u{7A7A}"}{number}`
+			else `{if lot.kind == "ground" then "Ground" else "Sky"} {number}`
+	end
+
 	local function place(lotId: string, key: string?): boolean
 		local result = GardenState.call("parkPlace", { lot = lotId, key = key })
 		if not result.ok then
 			Toast.show(result.reason or "that did not work")
 			return false
 		end
-		goBack()
+		selectedLot = nil
 		return true
+	end
+
+	-- Puts an item into the lot that was chosen at the top (an empty one of the item's kind).
+	local function putItem(snapshot: GardenState.Snapshot, key: string): boolean
+		local attraction = Park.parseKey(key)
+		local chosen = if selectedLot then Park.lot(selectedLot) else nil
+		if not attraction then
+			return false
+		end
+		if not chosen or snapshot.park.placed[chosen.id] then
+			Toast.show("Tap an empty lot at the top first")
+			return false
+		end
+		if chosen.kind ~= attraction.kind then
+			Toast.show(
+				if attraction.kind == "ground" then "That one goes on a ground lot" else "That one goes on a sky lot"
+			)
+			return false
+		end
+		return place(chosen.id, key)
+	end
+
+	-- The fixed row at the top: every lot, with what stands on it. Tap one to choose where the next item goes.
+	local function renderHeader(snapshot: GardenState.Snapshot)
+		for _, tile in tiles do
+			tile:Destroy()
+		end
+		table.clear(tiles)
+		local theme = UiTheme.get()
+		local count = #Park.Lots
+		local gap = 6
+		for index, lot in Park.Lots do
+			local open = snapshot.level.level >= lot.level
+			local key = snapshot.park.placed[lot.id]
+			local tile = Instance.new("TextButton")
+			tile.Name = lot.id
+			tile.AnchorPoint = Vector2.new(0, 0)
+			tile.Size = UDim2.new(1 / count, -gap, 1, 0)
+			tile.Position = UDim2.new((index - 1) / count, gap / 2, 0, 0)
+			tile.TextScaled = true
+			tile.RichText = false
+			tile.Font = theme.body
+			local lines = lotName(lot)
+			if not open then
+				lines ..= `\nLv {lot.level}`
+			elseif key then
+				local attraction = Park.parseKey(key)
+				lines ..= `\n{if attraction then nameOf(attraction) else key}`
+			else
+				lines ..= "\n-"
+			end
+			tile.Text = lines
+			local limit = Instance.new("UITextSizeConstraint")
+			limit.MaxTextSize = 15
+			limit.MinTextSize = 8
+			limit.Parent = tile
+			local pad = Instance.new("UIPadding")
+			pad.PaddingLeft = UDim.new(0, 4)
+			pad.PaddingRight = UDim.new(0, 4)
+			pad.PaddingTop = UDim.new(0, 4)
+			pad.PaddingBottom = UDim.new(0, 4)
+			pad.Parent = tile
+			if open then
+				UiTheme.styleButton(tile, theme, if lot.kind == "ground" then "Matcha" else "Sakura", 10, false)
+				if theme.night then
+					tile.TextColor3 = kindColor(lot.kind)
+				end
+			else
+				tile.BackgroundTransparency = 0.8
+				tile.BackgroundColor3 = Color3.new(0.5, 0.5, 0.55)
+				tile.TextColor3 = theme.subText
+			end
+			if selectedLot == lot.id then
+				local stroke = Instance.new("UIStroke")
+				stroke.Color = Color3.new(1, 1, 1)
+				stroke.Thickness = 4
+				stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+				stroke.Parent = tile
+			end
+			tile.Activated:Connect(function()
+				if not open then
+					Toast.show(`Opens at Lv {lot.level}`)
+					return
+				end
+				if key then
+					-- a lot with something on it: tap to empty it, and it is chosen for the next item
+					if place(lot.id, nil) then
+						selectedLot = lot.id
+					end
+					return
+				end
+				selectedLot = if selectedLot == lot.id then nil else lot.id
+				local latest = GardenState.get()
+				if latest then
+					render(latest)
+				end
+			end)
+			tile.Parent = header
+			tiles[lot.id] = tile
+		end
 	end
 
 	local function mainRows(snapshot: GardenState.Snapshot): { ListModal.Row }
@@ -147,34 +264,39 @@ function ParkUI.start()
 				render(snapshot)
 			end,
 		})
-		local open, used = 0, 0
-		for _, lot in Park.Lots do
-			if snapshot.level.level >= lot.level then
-				open += 1
-				if park.placed[lot.id] then
-					used += 1
-				end
+
+		-- Your items: tap one to put it on the lot you chose above (or the first empty one that fits).
+		local chosen = if selectedLot then Park.lot(selectedLot) else nil
+		-- With a lot chosen, only the items that fit it are listed (ground = green, sky = pink).
+		local keys: { string } = {}
+		for key in park.items do
+			local attraction = Park.parseKey(key)
+			if attraction and (not chosen or attraction.kind == chosen.kind) then
+				table.insert(keys, key)
 			end
 		end
-		table.insert(rows, { note = true, text = `Park: {used} of {open} lots in use. A tick marks what stands there` })
+		table.sort(keys)
+		local where: { [string]: Park.Lot } = {}
 		for _, lot in Park.Lots do
-			local label, number = lotLabel(lot)
-			if snapshot.level.level < lot.level then
-				table.insert(rows, { text = `{label} {number}: opens at Lv {lot.level}`, note = true })
-			else
-				local key = park.placed[lot.id]
-				table.insert(rows, {
-					text = if key
-						then `{label} {number}: {itemText(key)}`
-						else `{label} {number}: empty - tap to place`,
-					selected = key ~= nil,
-					color = if key then paletteColor(key) else Palette.Hues.Matcha.Night,
-					onTap = function()
-						view = { kind = "pick", lotId = lot.id }
-						render(snapshot)
-					end,
-				})
+			local key = park.placed[lot.id]
+			if key then
+				where[key] = lot
 			end
+		end
+		if #keys == 0 then
+			table.insert(rows, { note = true, text = "You have nothing to place yet. Open Gift Boxes!" })
+		elseif not chosen then
+			table.insert(rows, { note = true, text = "1. Tap an empty lot   2. Tap an item" })
+		end
+		for _, key in keys do
+			local lot = where[key]
+			table.insert(rows, {
+				text = if lot then `{itemText(key)}  \u{2192} {lotName(lot)}` else itemText(key),
+				color = kindColor(kindOf(key)),
+				onTap = function()
+					return putItem(snapshot, key)
+				end,
+			})
 		end
 		return rows
 	end
@@ -220,67 +342,20 @@ function ParkUI.start()
 		return rows
 	end
 
-	local function pickRows(snapshot: GardenState.Snapshot, lotId: string): { ListModal.Row }
-		local park = snapshot.park
-		local lot = Park.lot(lotId)
-		local rows: { ListModal.Row } = { { text = "Back", onTap = goBack, color = Palette.Hues.Fuji.Night } }
-		if not lot then
-			return rows
-		end
-		local keys: { string } = {}
-		for key in park.items do
-			local attraction = Park.parseKey(key)
-			if attraction and attraction.kind == lot.kind then
-				table.insert(keys, key)
-			end
-		end
-		table.sort(keys)
-		local placedKey = park.placed[lotId]
-		table.insert(rows, {
-			note = true,
-			selected = placedKey ~= nil,
-			text = if placedKey then `Standing here now: {itemText(placedKey)}` else "This lot is empty",
-		})
-		if #keys == 0 then
-			table.insert(rows, { note = true, text = "You have nothing for this lot yet. Open Gift Boxes!" })
-		else
-			table.insert(rows, { note = true, text = "Choose for this lot:" })
-		end
-		for _, key in keys do
-			local here = park.placed[lotId] == key
-			table.insert(rows, {
-				text = itemText(key),
-				selected = here,
-				color = paletteColor(key),
-				onTap = function()
-					return place(lotId, key)
-				end,
-			})
-		end
-		if park.placed[lotId] then
-			table.insert(rows, {
-				text = "Clear this lot",
-				onTap = function()
-					return place(lotId, nil)
-				end,
-			})
-		end
-		return rows
-	end
-
 	render = function(snapshot: GardenState.Snapshot)
 		local current = view
 		if current.kind == "goals" then
+			modal.setHeaderHeight(0)
 			modal.setTitle("Goals")
 			modal.setRows(goalRows(snapshot))
 		elseif current.kind == "daily" then
+			modal.setHeaderHeight(0)
 			modal.setTitle("Daily Missions")
 			modal.setRows(dailyRows(snapshot))
-		elseif current.kind == "pick" then
-			modal.setTitle("Park")
-			modal.setRows(pickRows(snapshot, current.lotId))
 		else
 			modal.setTitle("Park")
+			modal.setHeaderHeight(HEADER_HEIGHT)
+			renderHeader(snapshot)
 			modal.setRows(mainRows(snapshot))
 		end
 	end
@@ -335,6 +410,7 @@ function ParkUI.start()
 			return
 		end
 		view = { kind = "main" }
+		selectedLot = nil
 		render(snapshot)
 		ProximityPromptService.Enabled = false
 		modal.open()
