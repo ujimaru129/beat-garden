@@ -147,6 +147,16 @@ function ParkUI.start()
 				render(snapshot)
 			end,
 		})
+		local open, used = 0, 0
+		for _, lot in Park.Lots do
+			if snapshot.level.level >= lot.level then
+				open += 1
+				if park.placed[lot.id] then
+					used += 1
+				end
+			end
+		end
+		table.insert(rows, { note = true, text = `Park: {used} of {open} lots in use. A tick marks what stands there` })
 		for _, lot in Park.Lots do
 			local label, number = lotLabel(lot)
 			if snapshot.level.level < lot.level then
@@ -157,6 +167,7 @@ function ParkUI.start()
 					text = if key
 						then `{label} {number}: {itemText(key)}`
 						else `{label} {number}: empty - tap to place`,
+					selected = key ~= nil,
 					color = if key then paletteColor(key) else Palette.Hues.Matcha.Night,
 					onTap = function()
 						view = { kind = "pick", lotId = lot.id }
@@ -224,6 +235,12 @@ function ParkUI.start()
 			end
 		end
 		table.sort(keys)
+		local placedKey = park.placed[lotId]
+		table.insert(rows, {
+			note = true,
+			selected = placedKey ~= nil,
+			text = if placedKey then `Standing here now: {itemText(placedKey)}` else "This lot is empty",
+		})
 		if #keys == 0 then
 			table.insert(rows, { note = true, text = "You have nothing for this lot yet. Open Gift Boxes!" })
 		else
@@ -232,7 +249,8 @@ function ParkUI.start()
 		for _, key in keys do
 			local here = park.placed[lotId] == key
 			table.insert(rows, {
-				text = `{if here then "\u{2714} " else ""}{itemText(key)}`,
+				text = itemText(key),
+				selected = here,
 				color = paletteColor(key),
 				onTap = function()
 					return place(lotId, key)

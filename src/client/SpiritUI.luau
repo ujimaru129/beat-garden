@@ -71,6 +71,31 @@ local function rowsFor(
 	openNames: () -> ()
 ): { ListModal.Row }
 	local rows: { ListModal.Row } = {}
+	-- What is equipped right now, always at the top.
+	local equippedSpirit = nil
+	for _, spirit in snapshot.spirits do
+		if spirit.id == snapshot.equippedSpirit then
+			equippedSpirit = spirit
+		end
+	end
+	local equippedDef = if equippedSpirit then Spirits.get(equippedSpirit.kind) else nil
+	if equippedSpirit and equippedDef then
+		local ja = Lang.code == "ja"
+		local name = Spirits.nickname(equippedSpirit.nick, Lang.code)
+			or (if ja then equippedDef.name.ja else equippedDef.name.en)
+		local levelText, traitText = growthText(equippedSpirit)
+		table.insert(rows, {
+			note = true,
+			selected = true,
+			text = `{if ja then "\u{4E00}\u{7DD2}\u{306B}\u{3044}\u{308B}" else "With you now"}: {name}  {levelText}{if traitText
+					~= ""
+				then `  \u{2728} {traitText}`
+				else ""}`,
+		})
+		table.insert(rows, { note = true, text = "Tap the equipped one again to put it away" })
+	elseif #snapshot.spirits > 0 then
+		table.insert(rows, { note = true, text = "No spirit is with you. Tap one below to equip it" })
+	end
 	if snapshot.eggs > 0 then
 		table.insert(rows, {
 			text = `Hatch an egg   (you have {snapshot.eggs})`,

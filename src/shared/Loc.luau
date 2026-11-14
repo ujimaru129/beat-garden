@@ -10,6 +10,9 @@ local Loc = {}
 local EXACT: { [string]: string } = {
 	-- HUD and window titles
 	["Shop"] = "ショップ",
+	["This lot is empty"] = "この区画は空です",
+	["Tap the equipped one again to put it away"] = "装備中のスピリットをもう一度タップすると、しまえます",
+	["No spirit is with you. Tap one below to equip it"] = "スピリットを連れていません。下から選んでタップすると装備します",
 	["Seed Shop"] = "タネ屋",
 	["Market"] = "マーケット",
 	["Spirits"] = "スピリット",
@@ -185,6 +188,11 @@ local TEMPLATES: { { string } } = {
 	{ "{} is now with you!", "{1} が、そばにいるよ！" },
 	{ "Hatch an egg   (you have {})", "卵をかえす   (持っている: {1})" },
 	{ "Equipped: {}", "装備中: {1}" },
+	{
+		"Park: {} of {} lots in use. A tick marks what stands there",
+		"パーク: {1} / {2} 区画を使用中。チェックが付いているものが置かれています",
+	},
+	{ "Standing here now: {}", "いま置いてある: {1}" },
 	{ "Equip {}", "装備: {1}" },
 	{ "BPM Rush soon: {}  {}", "もうすぐ BPM Rush: {1}  {2}" },
 	{ "BPM Rush! {} seeds mutate more for a while", "BPM Rush！{1} のタネが、しばらく変異しやすいよ" },
