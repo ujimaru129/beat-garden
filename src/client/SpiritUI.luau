@@ -24,7 +24,12 @@ local function hearts(bond: number?): string
 	return string.rep("\u{2665}", level) .. string.rep("\u{2661}", Spirits.MaxBondLevel - level)
 end
 
--- "Lv 3" and, when it has grown any, the names of its traits: "Glow, Cloud Ride".
+-- "Spirit Lv 3": named so it is not taken for the garden level.
+local function levelLabel(level: number): string
+	return if Lang.code == "ja" then `\u{30B9}\u{30D4}\u{30EA}\u{30C3}\u{30C8} Lv {level}` else `Spirit Lv {level}`
+end
+
+-- "Spirit Lv 3" and, when it has grown any, the names of its traits: "Glow, Cloud Ride".
 local function growthText(spirit: { xp: number?, traits: { string }? }): (string, string)
 	local level = Spirits.levelOf(spirit.xp or 0)
 	local names: { string } = {}
@@ -35,7 +40,7 @@ local function growthText(spirit: { xp: number?, traits: { string }? }): (string
 			table.insert(names, if Lang.code == "ja" then trait.name.ja else trait.name.en)
 		end
 	end
-	return `Lv {level}`, table.concat(names, ", ")
+	return levelLabel(level), table.concat(names, ", ")
 end
 
 -- One short line: "Tends every 60s (+6) / mutations x1.3".
@@ -228,7 +233,7 @@ function SpiritUI.start()
 			if def then
 				local called = Spirits.nickname(spirit.nick, Lang.code)
 				table.insert(rows, {
-					text = `{hearts(spirit.bond)}  {def.name.en}  Lv {Spirits.levelOf(spirit.xp or 0)}{if called
+					text = `{hearts(spirit.bond)}  {def.name.en}  {levelLabel(Spirits.levelOf(spirit.xp or 0))}{if called
 						then `  \u{300C}{called}\u{300D}`
 						else ""}`,
 					selected = spirit.id == snapshot.equippedSpirit,
