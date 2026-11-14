@@ -41,6 +41,9 @@ GENRES = {
     "orange_beach": "Pop",
     "blue_samurai": "Japan",
     "shinjuku_deep_romance": "Pop",
+    "yokohama_stars": "Pop",
+    "popping_popping": "Dance",
+    "good_morning_harajuku": "Pop",
 }
 # Songs cut short (ms): the audio after this is not played and no note is placed in it.
 CUT_MS = {"kamikaze": 88000}
@@ -60,6 +63,9 @@ ASSET_IDS = {
     "orange_beach": "109616336017148",
     "blue_samurai": "113086931885012",
     "shinjuku_deep_romance": "77158663817198",
+    "yokohama_stars": "75908588261257",
+    "popping_popping": "106085832352727",
+    "good_morning_harajuku": "115077507225615",
 }
 # Per difficulty: notes per beat to aim for (so the same fraction of the beats at any tempo), the minimum gap, which grid positions are allowed, and how far the
 # lane may jump between two close notes (a phone has no room for wide jumps at speed).
@@ -79,14 +85,14 @@ DIFFICULTY = {
         "max_jump": 2,
     },
     "Hard": {
-        "per_beat": 2.0,
-        "min_gap_beats": 0.45,
-        "min_gap_ms": 150,
+        "per_beat": 2.4,
+        "min_gap_beats": 0.36,
+        "min_gap_ms": 140,
         "grid": {"beat": 1.0, "eighth": 0.6, "sixteenth": 0.35},
         "grid_tol": 0.16,
-        # quick notes (about 200 ms apart) come in bursts of at most five notes, then a short rest
-        "burst_cooldown_beats": 0.6,
-        "burst_max_run": 4,
+        # quick notes (about 200 ms apart) come in bursts of at most six notes, then a short rest
+        "burst_cooldown_beats": 0.4,
+        "burst_max_run": 5,
         "max_jump": 2,
     },
     # For rhythm-game players: built on the beat grid. Most notes sit on the beat, the 8ths add the off-beat only as a
@@ -101,6 +107,9 @@ DIFFICULTY = {
         "burst_cooldown_beats": 0.4,
         "burst_max_run": 6,
         "max_jump": 3,
+        # two-finger hits: on strong beats that stand alone, a second note in the next lane at the same time
+        "chord_ratio": 0.09,
+        "chord_isolation_ms": 280,
     },
 }
 
@@ -114,10 +123,13 @@ OVERRIDES = {
     },
     "pastel_trip": {
         # slow (about 100 BPM) with a lot going on in the 8ths and 16ths: Expert can take more of them
+        "Hard": {"min_gap_beats": 0.26, "per_beat": 2.7, "grid_tol": 0.18},
         "Expert": {"per_beat": 4.0, "grid": {"beat": 1.0, "eighth": 0.6, "sixteenth": 0.5}, "grid_tol": 0.15, "max_offbeat_ratio": 0.6, "min_gap_ms": 100},
     },
+    "orange_beach": {"Hard": {"min_gap_beats": 0.28, "per_beat": 2.7, "grid_tol": 0.18}},
+    "shinjuku_deep_romance": {"Hard": {"min_gap_beats": 0.28, "per_beat": 2.7, "grid_tol": 0.18}},
     "blue_samurai": {
-        "Hard": {"per_beat": 1.6, "burst_max_run": 2, "burst_cooldown_beats": 1.0, "min_gap_ms": 165},
+        "Hard": {"per_beat": 1.8, "burst_max_run": 3, "burst_cooldown_beats": 0.9, "min_gap_ms": 160},
     },
 }
 
@@ -276,6 +288,36 @@ def assign_lanes(taken, lane_edges, max_jump: int = 3):
     return notes
 
 
+def add_chords(notes, taken, beats, cfg):
+    """Adds a second note at the same time, in a lane next to the first, to some strong beat notes that stand alone
+    (no other note within `chord_isolation_ms` before or after it). At most `chord_ratio` of the notes get a partner,
+    never two chords in a row. Two adjacent lanes are always reachable with two fingers on a phone."""
+    iso = cfg["chord_isolation_ms"]
+    cands = []
+    for i, (lane, ms) in enumerate(notes):
+        gap_prev = ms - notes[i - 1][1] if i > 0 else 9999
+        gap_next = notes[i + 1][1] - ms if i + 1 < len(notes) else 9999
+        if min(gap_prev, gap_next) < iso:
+            continue
+        if grid_class(taken[i]["t"], beats, cfg.get("grid_tol", 0.11)) != "beat":
+            continue
+        cands.append((taken[i]["strength"], i))
+    cands.sort(reverse=True)
+    want = int(len(notes) * cfg["chord_ratio"])
+    chosen: list = []
+    for _, i in cands:
+        if len(chosen) >= want:
+            break
+        if all(abs(i - j) > 4 for j in chosen):  # keep chords apart
+            chosen.append(i)
+    extra = []
+    for n, i in enumerate(sorted(chosen)):
+        lane, ms = notes[i]
+        partner = lane + 1 if lane < 3 and (lane == 0 or n % 2 == 0) else lane - 1
+        extra.append([partner, ms])
+    return sorted(notes + extra, key=lambda n: (n[1], n[0]))
+
+
 def main() -> None:
     wav = sys.argv[1]
     song_id = sys.argv[2]
@@ -319,6 +361,8 @@ def main() -> None:
         entry = {"id": idx, "startMs": int(round(a * 1000)), "endMs": int(round(b * 1000)), "anchorMs": int(round(beats[k] * 1000))}
         for name in DIFFICULTY:
             entry[name] = assign_lanes(picked[name][idx], edges[name], DIFFICULTY[name]["max_jump"])
+            if "chord_ratio" in DIFFICULTY[name]:
+                entry[name] = add_chords(entry[name], picked[name][idx], beats, config_for(name))
         out_segments.append(entry)
 
     root = Path(__file__).resolve().parents[2]

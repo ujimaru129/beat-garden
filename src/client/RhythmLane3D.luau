@@ -42,6 +42,10 @@ local NOTE_SCALE = LANE_WIDTH / 3 -- note pieces were drawn for 3-stud lanes
 local TRI_BASE = 2.4 -- triangle note size, in the drawing size above
 local TRI_SLABS = 14 -- slabs a triangle note is built from
 local TRI_SIZE = 1.0 -- the triangle is drawn this much bigger than the other shapes' base, so it looks as large
+local BEAM_SLICES = 5 -- the press light up the lane: slices fading out away from the hit line
+local BEAM_SLICE_LENGTH = 4
+local BEAM_FADE = { 0.2, 0.42, 0.62, 0.8, 0.92 } -- start transparency of each slice
+local DIAMOND_SIZE = LANE_WIDTH * 0.85 -- a diamond of light on the hit point (a square turned 45 degrees)
 local LANE_LENGTH = 40 -- studs from the hit line to where notes appear
 local HIT_AHEAD = 7 -- studs between the character and the hit line
 local CHARACTER_FADE = 0.6 -- the character stands near the hit line, so it is drawn faint during a run
@@ -223,7 +227,8 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 
 	-- Board: one dark strip per lane, a neon hit line and a tap pad that flashes on hits.
 	local pads: { BasePart } = {}
-	local beams: { BasePart } = {}
+	local beams: { { BasePart } } = {} -- a light shaft up the lane, in slices that fade out towards the far end
+	local diamonds: { BasePart } = {} -- a glowing diamond on the hit point
 	for lane = 0, 3 do
 		local color = laneColor(lane)
 		-- The lane floor: tinted glass in the lane's colour (pastel by day, deep neon-tinted by night), made of
@@ -231,7 +236,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		local hueName = Palette.LaneOrder[lane + 1]
 		local floorColor = if dayLook
 			then Palette.hue(hueName, "Day"):Lerp(Palette.hue(hueName, "Night"), 0.32)
-			else color:Lerp(Color3.new(0, 0, 0), 0.8)
+			else color:Lerp(Color3.new(0, 0, 0), 0.93) -- nearly black glass: the notes stand out against it
 		local slices = 8
 		local sliceLength = (LANE_LENGTH + 6) / slices
 		for k = 0, slices - 1 do
@@ -242,7 +247,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			slice.Size = Vector3.new(LANE_WIDTH - 0.15, 0.2, sliceLength + 0.02)
 			slice.CFrame = origin * CFrame.new(laneX(lane), 0.1, zCenter)
 			slice.Material = Enum.Material.SmoothPlastic
-			slice.Transparency = (if dayLook then 0.02 else 0.12) + 0.85 * far ^ 1.6
+			slice.Transparency = (if dayLook then 0.02 else 0.04) + 0.85 * far ^ 1.6
 			make("Part", slice, folder)
 		end
 
@@ -289,14 +294,27 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 		pad.Transparency = 1
 		pads[lane + 1] = make("Part", pad, folder)
 
-		-- A beam of light up the lane while a key is pressed (and a button flash, see pressFx).
-		local beam = solidProps(color:Lerp(Color3.new(1, 1, 1), 0.4))
-		beam.Name = `Beam{lane}`
-		beam.Size = Vector3.new(LANE_WIDTH - 0.15, 0.12, 16)
-		beam.CFrame = origin * CFrame.new(laneX(lane), 0.32, -8)
-		beam.Material = Enum.Material.SmoothPlastic
-		beam.Transparency = 1
-		beams[lane + 1] = make("Part", beam, folder)
+		-- A shaft of light up the lane while a key is pressed (and a button flash, see pressFx): neon slices, strong at the
+		-- hit line and fading away towards the far end, and a diamond of light on the hit point.
+		local shaft: { BasePart } = {}
+		for k = 0, BEAM_SLICES - 1 do
+			local slice = solidProps(color:Lerp(Color3.new(1, 1, 1), 0.45))
+			slice.Name = `Beam{lane}_{k}`
+			slice.Size = Vector3.new(LANE_WIDTH - 0.15, 0.12, BEAM_SLICE_LENGTH)
+			slice.CFrame = origin * CFrame.new(laneX(lane), 0.32, -BEAM_SLICE_LENGTH * (k + 0.5))
+			slice.Material = Enum.Material.Neon
+			slice.Transparency = 1
+			shaft[k + 1] = make("Part", slice, folder)
+		end
+		beams[lane + 1] = shaft
+
+		local diamond = solidProps(color:Lerp(Color3.new(1, 1, 1), 0.6))
+		diamond.Name = `HitDiamond{lane}`
+		diamond.Size = Vector3.new(DIAMOND_SIZE, 0.1, DIAMOND_SIZE)
+		diamond.CFrame = origin * CFrame.new(laneX(lane), 0.36, 0) * CFrame.Angles(0, math.pi / 4, 0)
+		diamond.Material = Enum.Material.Neon
+		diamond.Transparency = 1
+		diamonds[lane + 1] = make("Part", diamond, folder)
 	end
 
 	-- Note pieces are made only when a note comes into view and go back to a pool when it is done. A Hard chart
@@ -689,10 +707,21 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 				Scale = 1,
 			}):Play()
 		end
-		local beam = beams[lane + 1]
-		if beam then
-			beam.Transparency = 0.4
-			TweenService:Create(beam, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		local shaft = beams[lane + 1]
+		if shaft then
+			for k, slice in shaft do
+				slice.Transparency = BEAM_FADE[k] or 0.95
+				TweenService:Create(slice, TweenInfo.new(0.34, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Transparency = 1,
+				}):Play()
+			end
+		end
+		local diamond = diamonds[lane + 1]
+		if diamond then
+			diamond.Size = Vector3.new(DIAMOND_SIZE * 0.7, 0.1, DIAMOND_SIZE * 0.7)
+			diamond.Transparency = 0.05
+			TweenService:Create(diamond, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = Vector3.new(DIAMOND_SIZE * 1.25, 0.1, DIAMOND_SIZE * 1.25),
 				Transparency = 1,
 			}):Play()
 		end

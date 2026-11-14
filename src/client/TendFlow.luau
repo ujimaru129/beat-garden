@@ -189,6 +189,10 @@ function TendFlow.start()
 		end)
 		local items: { SongSelect.Item } = {}
 		for _, song in songs do
+			-- A song whose audio is not uploaded yet would play silent: it is listed only while testing in Studio.
+			if not song.audioAssetId and not RunService:IsStudio() then
+				continue
+			end
 			table.insert(items, {
 				songId = song.songId,
 				name = song.name,

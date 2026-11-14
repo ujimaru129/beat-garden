@@ -12,6 +12,7 @@ export type SegmentData = {
 	Easy: { Types.RawNote },
 	Normal: { Types.RawNote },
 	Hard: { Types.RawNote },
+	Expert: { Types.RawNote },
 }
 
 export type SongData = {
@@ -52,6 +53,9 @@ local list: { SongData } = {
 	require(script.Data.NaniwaMarch) :: any,
 	require(script.Data.BlueSamurai) :: any,
 	require(script.Data.ShinjukuDeepRomance) :: any,
+	require(script.Data.YokohamaStars) :: any,
+	require(script.Data.PoppingPopping) :: any,
+	require(script.Data.GoodMorningHarajuku) :: any,
 }
 Songs.List = table.freeze(list)
 

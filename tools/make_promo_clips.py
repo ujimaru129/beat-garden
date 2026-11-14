@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Cuts the raw screen recording into 9:16 TikTok clips: the gameplay in the middle over a blurred copy of itself,
-the game icon + title on top, and a short info line below. Usage: python3 tools/make_promo_clips.py"""
+the game icon + title on top, and a short info line below. Usage: python3 tools/make_promo_clips.py [clip name ...]"""
 import subprocess
+import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-RAW = next((ROOT / "promo/raw").glob("*.mp4"))
+RAWS = sorted((ROOT / "promo/raw").glob("*.mp4"))
+RAW_OLD = RAWS[0]  # 11/12: a 1080x2400 phone recording with the game in a strip
+RAW_LANDSCAPE = RAWS[1] if len(RAWS) > 1 else None  # 11/13: 2400x1080 landscape recording
 OUT = ROOT / "promo/final"
 ICON = ROOT / "assets/branding/game_icon_final_512.png"
 FONT = "/System/Library/Fonts/ヒラギノ丸ゴ ProN W4.ttc"
@@ -23,6 +26,11 @@ CLIPS = [
     ("05_select_and_play", 198, 25, "好きな曲を選んで遊ぼう"),
     ("06_combo_50", 242, 22, "50コンボ！ノリノリ"),
 ]
+
+# The landscape recording (song select -> difficulty -> Expert). The temporary Day / Night button (top centre) is
+# removed from the picture; the whole width is scaled to the strip.
+CROP_LANDSCAPE = "delogo=x=1045:y=165:w=310:h=125,scale=1080:484"
+CLIPS_LANDSCAPE = [("07_song_select_expert", 15, 30, "")]
 
 
 def font(size):
@@ -59,17 +67,23 @@ def overlay(line, path):
 def main():
     OUT.mkdir(exist_ok=True)
     tmp = OUT / "_overlay.png"
-    for name, start, length, line in CLIPS:
+    jobs = [(RAW_OLD, CROP, c) for c in CLIPS]
+    if RAW_LANDSCAPE:
+        jobs += [(RAW_LANDSCAPE, CROP_LANDSCAPE, c) for c in CLIPS_LANDSCAPE]
+    only = sys.argv[1:]  # clip names to make (default: all)
+    for raw, crop, (name, start, length, line) in jobs:
+        if only and name not in only:
+            continue
         overlay(line, tmp)
         fade_out = length - 0.4
         fc = (
-            f"[0:v]{CROP},split[a][b];"
+            f"[0:v]{crop},split[a][b];"
             f"[a]scale=-2:{H},crop={W}:{H},boxblur=40:4,eq=brightness=0.05:saturation=1.2[bg];"
             f"[bg][b]overlay=0:{GAME_Y}[v1];"
             f"[v1][1:v]overlay=0:0,fps=30,fade=t=in:st=0:d=0.3,fade=t=out:st={fade_out}:d=0.4[v]"
         )
         subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-t", str(length), "-i", str(RAW), "-i", str(tmp),
+            ["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-t", str(length), "-i", str(raw), "-i", str(tmp),
              "-filter_complex", fc, "-map", "[v]", "-map", "0:a",
              "-af", f"afade=t=in:d=0.3,afade=t=out:st={length - 0.6}:d=0.6",
              "-c:v", "libx264", "-crf", "23", "-preset", "medium", "-pix_fmt", "yuv420p",

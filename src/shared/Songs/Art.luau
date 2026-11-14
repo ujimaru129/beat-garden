@@ -21,4 +21,7 @@ return table.freeze({
 	naniwa_march = image("108135762307534"),
 	blue_samurai = image("83508184986174"),
 	shinjuku_deep_romance = image("140512173105881"),
+	yokohama_stars = image("70593375024994"),
+	popping_popping = image("98690336960459"),
+	good_morning_harajuku = image("83343427332971"),
 } :: { [string]: string })
