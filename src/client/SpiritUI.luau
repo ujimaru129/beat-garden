@@ -97,7 +97,7 @@ local function rowsFor(
 	-- One row per kind ("Koke x3"): the spirits of a kind are shown as the one that counts (the equipped one, else the
 	-- most petted, else the first hatched). Rows: the equipped kind first, then the most petted, then the kind in the
 	-- order of the Spirits list.
-	type Group = { kind: string, best: any, count: number, equipped: boolean, order: number }
+	type Group = { kind: string, best: any, count: number, equipped: boolean, order: number, level: number }
 	local groups: { [string]: Group } = {}
 	local order: { Group } = {}
 	local kindOrder: { [string]: number } = {}
@@ -105,11 +105,20 @@ local function rowsFor(
 		kindOrder[def.kind] = index
 	end
 	for _, spirit in snapshot.spirits do
-		local group = groups[spirit.kind]
+		-- spirits of one kind AND one level share a row: a new Lv1 is not hidden behind a Lv10 of the same kind
+		local level = Spirits.levelOf(spirit.xp or 0)
+		local key = `{spirit.kind}:{level}`
+		local group = groups[key]
 		if not group then
-			group =
-				{ kind = spirit.kind, best = spirit, count = 0, equipped = false, order = kindOrder[spirit.kind] or 99 }
-			groups[spirit.kind] = group
+			group = {
+				kind = spirit.kind,
+				best = spirit,
+				count = 0,
+				equipped = false,
+				order = kindOrder[spirit.kind] or 99,
+				level = level,
+			}
+			groups[key] = group
 			table.insert(order, group)
 		end
 		group.count += 1
@@ -134,7 +143,10 @@ local function rowsFor(
 		if aBond ~= bBond then
 			return aBond > bBond
 		end
-		return a.order < b.order
+		if a.order ~= b.order then
+			return a.order < b.order
+		end
+		return a.level > b.level
 	end)
 	for _, group in order do
 		local def = Spirits.get(group.kind)
