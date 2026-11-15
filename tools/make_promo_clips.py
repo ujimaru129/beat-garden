@@ -37,9 +37,11 @@ CLIPS_NEWSONGS = [("08_new_songs", 0, 43, "NEW SONGS ADDED")]
 # 11/14 evening: a real 2400x1080 landscape recording (daytime, Pastel Trip), scaled whole into the strip.
 RAW_DAY = Path("/Users/tadashi/TOKYOLOGIC Dropbox/Ujigawa Tadashi/screen-20261114-200756-1794654424737.mp4~2.mp4")
 CLIPS_DAY = [("09_day_pastel_trip", 5, 20.5, "")]
-# 11/15: Spirits select -> level up -> jump (Mac screen recording 2578x1326, a little top/bottom trimmed to fit the strip).
-RAW_SPIRITS = Path("/Users/tadashi/Desktop/画面収録 2026-11-15 12.11.36.mov")
-CLIPS_SPIRITS = [("10_spirits_levelup", 2, 26, "")]
+# 11/15: Spirits grow Lv1 -> Lv10 at night (Mac screen recording 1906x712, no sound: the field's night song is laid over it).
+RAW_SPIRITS = Path("/Users/tadashi/Desktop/画面収録 2026-11-15 12.41.47.mov")
+CLIPS_SPIRITS = [("10_spirits_levelup", 0, 18.5, "")]
+CROP_SPIRITS = "scale=1080:403,pad=1080:484:0:40:color=0x1a0b4a"  # wider than the strip: fitted by width, letterboxed
+AUDIO_OVERRIDE = {"10_spirits_levelup": ROOT / "audio/shorts/Metropolitan Expressway.short.mp3"}
 
 
 # the white banner text needs a dark backdrop: the daytime recording is bright, so its blurred background is darkened
@@ -92,7 +94,7 @@ def main():
         jobs += [(RAW_LANDSCAPE, CROP_LANDSCAPE, c) for c in CLIPS_LANDSCAPE]
     jobs += [(RAW_NEWSONGS, CROP, c) for c in CLIPS_NEWSONGS]  # a portrait 1080x2400 phone recording (rotation metadata), like the first one
     jobs += [(RAW_DAY, "scale=1080:486,crop=1080:484", c) for c in CLIPS_DAY]
-    jobs += [(RAW_SPIRITS, "crop=2578:1156:0:85,scale=1080:484", c) for c in CLIPS_SPIRITS]
+    jobs += [(RAW_SPIRITS, CROP_SPIRITS, c) for c in CLIPS_SPIRITS]
     only = sys.argv[1:]  # clip names to make (default: all)
     for raw, crop, (name, start, length, line) in jobs:
         if only and name not in only:
@@ -110,8 +112,13 @@ def main():
                                          "-of", "csv=p=0", str(raw)], capture_output=True, text=True).stdout.strip())
         audio = ["-map", "0:a", "-af", f"afade=t=in:d=0.3,afade=t=out:st={length - 0.6}:d=0.6",
                  "-c:a", "aac", "-b:a", "160k"] if has_audio else ["-an"]  # some screen recordings are silent
+        extra = []
+        if name in AUDIO_OVERRIDE:  # a silent recording: lay a song under it
+            extra = ["-i", str(AUDIO_OVERRIDE[name])]
+            audio = ["-map", "2:a", "-af", f"afade=t=in:d=0.3,afade=t=out:st={length - 0.6}:d=0.6",
+                     "-c:a", "aac", "-b:a", "160k", "-t", str(length)]
         subprocess.run(
-            ["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-t", str(length), "-i", str(raw), "-i", str(tmp),
+            ["ffmpeg", "-v", "error", "-y", "-ss", str(start), "-t", str(length), "-i", str(raw), "-i", str(tmp), *extra,
              "-filter_complex", fc, "-map", "[v]", *audio,
              "-c:v", "libx264", "-crf", "23", "-preset", "medium", "-pix_fmt", "yuv420p",
              "-movflags", "+faststart", str(OUT / f"{name}.mp4")],
