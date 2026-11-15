@@ -237,6 +237,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	local lastY = 0
 	local moved = 0
 	local velocity = 0
+	local lastDragEnd = 0
 	local function maxScroll(): number
 		return math.max(0, list.AbsoluteCanvasSize.Y - list.AbsoluteSize.Y)
 	end
@@ -289,6 +290,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			and (input == dragging or kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch)
 		then
 			dragging = nil
+			lastDragEnd = os.clock()
 		end
 	end)
 	-- a flick keeps rolling and slows down
@@ -379,7 +381,14 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 		end
 	end
 
-	backdrop.Activated:Connect(close)
+	-- A scroll must never close the list: ignore the backdrop while a press is dragging, or just after one
+	-- (a finger that slides off the panel and lifts over the dim area is not a tap outside).
+	backdrop.Activated:Connect(function()
+		if dragging ~= nil or os.clock() - lastDragEnd < 0.5 then
+			return
+		end
+		close()
+	end)
 	closeButton.Activated:Connect(close)
 
 	modal = {
@@ -402,8 +411,10 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 		end,
 		setTitle = function(text: string)
 			local translated = Lang.t(text)
-			if titleLabel.Text ~= translated then
-				list.CanvasPosition = Vector2.zero -- another view: start at its top
+			-- Another view starts at its top. A title that only changes its numbers (the Shop's coins and
+			-- countdown tick every second) is the same view: the scroll position stays.
+			if string.match(titleLabel.Text, "^[^%d%s]*") ~= string.match(translated, "^[^%d%s]*") then
+				list.CanvasPosition = Vector2.zero
 			end
 			titleLabel.Text = translated
 		end,

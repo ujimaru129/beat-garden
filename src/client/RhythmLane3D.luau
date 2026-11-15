@@ -768,7 +768,7 @@ function RhythmLane3D.play(segment: RhythmEngine.Segment, options: Options): () 
 			if spirit.id == snapshot.equippedSpirit and Spirits.get(spirit.kind) then
 				local traits = spirit.traits or {}
 				local model = SpiritModel.create(spirit.kind, traits)
-				model:ScaleTo(1.1 * Spirits.sizeFactor(Spirits.levelOf(spirit.xp or 0), traits))
+				model:ScaleTo(1.1 * math.min(2.2, Spirits.sizeFactor(Spirits.levelOf(spirit.xp or 0), traits)))
 				model:PivotTo(cheerBase)
 				model.Parent = folder
 				cheerModel = model

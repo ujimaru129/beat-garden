@@ -273,9 +273,9 @@ end
 
 -- The size of a spirit as a factor of the normal one.
 function Spirits.sizeFactor(level: number, traits: { string }): number
-	local size = 1 + 0.045 * (math.clamp(level, 1, Spirits.MaxLevel) - 1)
+	local size = 1 + 0.2 * (math.clamp(level, 1, Spirits.MaxLevel) - 1)
 	if table.find(traits, "Big") then
-		size += 0.18
+		size += 0.7
 	end
 	return size
 end

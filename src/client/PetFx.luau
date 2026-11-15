@@ -256,6 +256,40 @@ local function createPet(owner: Player, entry: Spirits.Entry, follow: boolean): 
 	return pet
 end
 
+-- A level-up pop: the spirit swells for a moment and bursts into sparkles.
+local function popPet(pet: Pet)
+	local model = pet.model
+	local target = 0.8 * Spirits.sizeFactor(pet.level, pet.traits)
+	local body = model.PrimaryPart
+	if body then
+		local burst = Instance.new("ParticleEmitter")
+		burst.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		burst.Rate = 0
+		burst.Lifetime = NumberRange.new(0.6, 1.1)
+		burst.Speed = NumberRange.new(6, 12)
+		burst.SpreadAngle = Vector2.new(180, 180)
+		burst.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.4), NumberSequenceKeypoint.new(1, 0) })
+		burst.LightEmission = 1
+		burst.Color = ColorSequence.new(Color3.fromRGB(255, 240, 120), Color3.fromRGB(255, 120, 200))
+		burst.Parent = body
+		burst:Emit(40)
+		task.delay(1.5, function()
+			burst:Destroy()
+		end)
+	end
+	task.spawn(function()
+		local t0 = os.clock()
+		while model.Parent do
+			local a = math.clamp((os.clock() - t0) / 0.6, 0, 1)
+			model:ScaleTo(target * (1 + 0.6 * (1 - a) * (1 - a)))
+			if a >= 1 then
+				break
+			end
+			task.wait()
+		end
+	end)
+end
+
 local function removePet(pet: Pet)
 	pet.model:Destroy()
 end
@@ -302,6 +336,7 @@ local function syncFollower(owner: Player)
 	local value = owner:GetAttribute("Follower")
 	local entry = if type(value) == "string" and value ~= "" then Spirits.decode(value) else nil
 	local current = followers[owner]
+	local grew = current ~= nil and entry ~= nil and entry.id == current.id and entry.level > current.level
 	if current and (not entry or entry.id ~= current.id or signature(entry) ~= current.sig) then
 		removePet(current)
 		followers[owner] = nil
@@ -317,6 +352,9 @@ local function syncFollower(owner: Player)
 		local created = createPet(owner, entry, true)
 		if created then
 			followers[owner] = created
+			if grew then
+				popPet(created)
+			end
 		end
 	end
 end

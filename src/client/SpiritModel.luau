@@ -120,14 +120,14 @@ local function addTraits(model: Model, look: Look, traits: { string })
 		local halo = add(
 			model,
 			ground(0, 0.05, 0, CFrame.Angles(0, 0, math.pi / 2)),
-			Vector3.new(0.08, 3.4, 3.4),
+			Vector3.new(0.08, 5, 5),
 			look.phones,
 			{ cylinder = true, neon = true }
 		)
-		halo.Transparency = 0.45
+		halo.Transparency = 0.3
 		local light = Instance.new("PointLight")
-		light.Range = 11
-		light.Brightness = 1.6
+		light.Range = 18
+		light.Brightness = 3
 		light.Color = look.phones
 		light.Parent = halo
 	end
@@ -153,13 +153,13 @@ local function addTraits(model: Model, look: Look, traits: { string })
 		if body then
 			local emitter = Instance.new("ParticleEmitter")
 			emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-			emitter.Rate = 7
+			emitter.Rate = 20
 			emitter.Lifetime = NumberRange.new(0.8, 1.4)
 			emitter.Speed = NumberRange.new(0.5, 1.5)
 			emitter.SpreadAngle = Vector2.new(180, 180)
 			emitter.Size = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.5),
-				NumberSequenceKeypoint.new(0.5, 0.9),
+				NumberSequenceKeypoint.new(0, 0.8),
+				NumberSequenceKeypoint.new(0.5, 1.5),
 				NumberSequenceKeypoint.new(1, 0),
 			})
 			emitter.Transparency = NumberSequence.new({
