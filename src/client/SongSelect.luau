@@ -25,6 +25,7 @@ export type Item = {
 	genre: string, -- "Pop" | "Japan" | "Dance" | "Rock"
 	bpm: number,
 	favorite: boolean,
+	isNew: boolean?, -- a recently added song: a NEW tag at the card's top-left
 	artAssetId: string?, -- artwork for the sleeve (Songs/Art); nil = initials on the genre colours
 	audioAssetId: string?, -- the song's audio; plays as a preview while the card is selected
 	previewStartMs: number?, -- where the preview starts in the audio (default 0)
@@ -666,6 +667,20 @@ function SongSelect.create(onPick: (item: Item) -> (), onClose: (() -> ())?): Se
 				TextSize = 24,
 				Font = Enum.Font.GothamBlack,
 			}, card) :: TextLabel
+			if item.isNew then
+				local tag = make("TextLabel", {
+					Position = UDim2.fromOffset(26, 2),
+					Size = UDim2.fromOffset(34, 14),
+					BackgroundColor3 = Color3.fromHex("#FF3E96"),
+					BorderSizePixel = 0,
+					Text = "NEW",
+					TextColor3 = Color3.new(1, 1, 1),
+					TextSize = 11,
+					Font = Enum.Font.GothamBlack,
+					ZIndex = 3,
+				}, card) :: TextLabel
+				make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, tag)
+			end
 			local cardName = make("TextLabel", {
 				Position = UDim2.fromOffset(26, 0),
 				Size = UDim2.new(1, -62, 0.58, 0),

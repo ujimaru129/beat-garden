@@ -44,6 +44,7 @@ GENRES = {
     "yokohama_stars": "Pop",
     "popping_popping": "Dance",
     "good_morning_harajuku": "Pop",
+    "feels_so_good": "Pop",
 }
 # Songs cut short (ms): the audio after this is not played and no note is placed in it.
 CUT_MS = {"kamikaze": 88000}
@@ -66,6 +67,7 @@ ASSET_IDS = {
     "yokohama_stars": "75908588261257",
     "popping_popping": "106085832352727",
     "good_morning_harajuku": "115077507225615",
+    "feels_so_good": "119223540667928",
 }
 # Per difficulty: notes per beat to aim for (so the same fraction of the beats at any tempo), the minimum gap, which grid positions are allowed, and how far the
 # lane may jump between two close notes (a phone has no room for wide jumps at speed).

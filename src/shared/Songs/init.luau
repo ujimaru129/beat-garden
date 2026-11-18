@@ -56,8 +56,14 @@ local list: { SongData } = {
 	require(script.Data.YokohamaStars) :: any,
 	require(script.Data.PoppingPopping) :: any,
 	require(script.Data.GoodMorningHarajuku) :: any,
+	require(script.Data.FeelsSoGood) :: any,
 }
 Songs.List = table.freeze(list)
+
+-- Recently added songs: the song select shows a NEW tag on them. Take a song out of this list when it is not new any more.
+Songs.NewIds = table.freeze({
+	feels_so_good = true,
+} :: { [string]: boolean })
 
 local byId: { [string]: SongData } = {}
 for _, song in list do

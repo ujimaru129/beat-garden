@@ -225,6 +225,7 @@ function TendFlow.start()
 				genre = (Genres.Names :: any)[song.genre].en,
 				bpm = song.bpm,
 				favorite = song.genre == favorite,
+				isNew = Songs.NewIds[song.songId] == true,
 				artAssetId = SongArt[song.songId],
 				audioAssetId = song.audioAssetId,
 				previewStartMs = previewStartOf(song),
