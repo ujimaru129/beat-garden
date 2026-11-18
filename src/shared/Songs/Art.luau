@@ -24,4 +24,5 @@ return table.freeze({
 	yokohama_stars = image("116350374243444"),
 	popping_popping = image("120861416936660"),
 	good_morning_harajuku = image("120165436734457"),
+	feels_so_good = image("116067297006123"),
 } :: { [string]: string })
