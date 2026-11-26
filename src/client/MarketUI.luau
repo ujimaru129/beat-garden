@@ -35,14 +35,28 @@ local function stockFor(snapshot: GardenState.Snapshot): { string }
 	return Shop.stock(slot, snapshot.level.level, shift)
 end
 
+-- Names in the player's language ("さくらポップ" on a Japanese client).
 local function seedName(seedId: string): string
 	local seed = Seeds.get(seedId)
-	return if seed then seed.name.en else seedId
+	return if seed then (if Lang.code == "ja" then seed.name.ja else seed.name.en) else seedId
 end
+
+local function spiritName(kind: string): string
+	local def = Spirits.get(kind)
+	return if def then (if Lang.code == "ja" then def.name.ja else def.name.en) else kind
+end
+
+local RARITY_JA: { [string]: string } = {
+	Common = "コモン",
+	Uncommon = "アンコモン",
+	Rare = "レア",
+	Epic = "エピック",
+	Legendary = "レジェンド",
+}
 
 local function fruitLabel(seedId: string, mutation: string?): string
 	local name = seedName(seedId)
-	return if mutation then `{Mutations.displayName(mutation)} {name}` else name
+	return if mutation then `{Lang.t(Mutations.displayName(mutation))} {name}` else name
 end
 
 -- The odds of the egg as a few short rows (one long row would be cut off): kinds with the same odds go together,
@@ -60,18 +74,18 @@ local function oddsRows(rows: { ListModal.Row })
 			group = { percent = o.percent, names = {} }
 			table.insert(groups, group)
 		end
-		table.insert(group.names, (Spirits.get(o.kind) :: Spirits.Def).name.en)
+		table.insert(group.names, spiritName(o.kind))
 	end
 	table.sort(groups, function(a, b)
 		return a.percent > b.percent
 	end)
 	table.insert(rows, { note = true, text = "Egg hatches into (odds):" })
 	for _, g in groups do
-		local names = table.concat(g.names, ", ")
-		table.insert(rows, {
-			note = true,
-			text = if #g.names == 1 then `{g.percent}%: {names}` else `{g.percent}% each: {names}`,
-		})
+		local names = table.concat(g.names, if Lang.code == "ja" then "、" else ", ")
+		local text = if Lang.code == "ja"
+			then (if #g.names == 1 then `{g.percent}%：{names}` else `各 {g.percent}%：{names}`)
+			else (if #g.names == 1 then `{g.percent}%: {names}` else `{g.percent}% each: {names}`)
+		table.insert(rows, { note = true, text = text })
 	end
 end
 
@@ -131,14 +145,18 @@ local function shopRows(
 		local own = snapshot.seeds[seed.seedId] or 0
 		local genre = (Genres.Names :: any)[seed.favoriteGenre]
 		local affordable = snapshot.coins >= seed.price
+		local rarity = if Lang.code == "ja" then RARITY_JA[seed.rarity] or seed.rarity else seed.rarity
 		table.insert(rows, {
-			text = seed.name.en,
+			text = seedName(seed.seedId),
 			columns = SEED_COLUMNS,
 			cells = {
 				{ icon = { kind = "plant", id = seed.seedId } },
 				{
-					text = seed.name.en,
-					sub = `{seed.rarity}   \u{2665} {genre.en}{stars(snapshot, seed.seedId)}`,
+					text = seedName(seed.seedId),
+					sub = `{rarity}   \u{2665} {if Lang.code == "ja" then genre.ja else genre.en}{stars(
+						snapshot,
+						seed.seedId
+					)}`,
 					bold = true,
 					color = BoardCells.ink(Palette.Rarity[seed.rarity]),
 				},
@@ -180,7 +198,7 @@ local function shopRows(
 		then `Garden Lv {level.level}  ({level.into}/{level.need} XP)`
 		else `Garden Lv {level.level} (max)`
 	local nextText = if nextSeed
-		then `  -  {nextSeed.name.en} opens at Lv {Progression.unlockLevelOf(nextSeed.seedId)}`
+		then `  -  {seedName(nextSeed.seedId)} opens at Lv {Progression.unlockLevelOf(nextSeed.seedId)}`
 		else "  -  every seed is open"
 	table.insert(rows, { note = true, text = Lang.t(progressText) .. Lang.t(nextText) })
 

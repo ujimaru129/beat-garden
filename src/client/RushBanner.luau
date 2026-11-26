@@ -50,7 +50,8 @@ function RushBanner.start()
 			local now = math.floor(Workspace:GetServerTimeNow())
 			local state = Rush.state(now)
 			if state then
-				local genre = (Genres.Names :: any)[state.genre].en
+				local names = (Genres.Names :: any)[state.genre]
+				local genre = if Lang.code == "ja" then names.ja else names.en
 				local time = `{state.secondsLeft // 60}:{string.format("%02d", state.secondsLeft % 60)}`
 				label.Text =
 					Lang.t(if state.active then `BPM RUSH  {genre}  {time}` else `BPM Rush soon: {genre}  {time}`)

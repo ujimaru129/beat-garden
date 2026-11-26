@@ -39,17 +39,17 @@ local MAX_DETAIL_ROWS = 6
 
 local function seedName(seedId: string): string
 	local seed = Seeds.get(seedId)
-	return if seed then seed.name.en else seedId
+	return if seed then (if Lang.code == "ja" then seed.name.ja else seed.name.en) else seedId
 end
 
 local function fruitLabel(seedId: string, mutation: string?): string
 	local name = seedName(seedId)
-	return if mutation then `{Mutations.displayName(mutation)} {name}` else name
+	return if mutation then `{Lang.t(Mutations.displayName(mutation))} {name}` else name
 end
 
 local function spiritName(kind: string): string
 	local def = Spirits.get(kind)
-	return if def then def.name.en else kind
+	return if def then (if Lang.code == "ja" then def.name.ja else def.name.en) else kind
 end
 
 local function copyOffer(offer: Offer): Offer

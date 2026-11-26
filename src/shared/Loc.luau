@@ -150,7 +150,7 @@ local EXACT: { [string]: string } = {
 	["you have no egg"] = "卵を持っていません",
 	["too many spirits"] = "スピリットが多すぎます",
 	["nothing to grow"] = "育てる植物がありません",
-	["no Instant Grow to use"] = "Instant Grow を持っていません",
+	["no Instant Grow to use"] = "インスタント成長を持っていません",
 	["already ripe"] = "もう実っています",
 	["already at the max level"] = "もう最大レベルです",
 	["too fast"] = "操作が速すぎます",
@@ -163,7 +163,7 @@ local EXACT: { [string]: string } = {
 	["You offer (tap to remove):"] = "あなたが出すもの（タップで外す）:",
 	["Add from your bag:"] = "カバンから足す:",
 	["Extras (Robux): save time or add a little luck"] = "Robux のおまけ: 時間の節約と、ちょっとした運のプラス",
-	["Double Growth: yours! Plants grow twice as fast"] = "Double Growth: 持っています！植物が 2 倍の速さで育つ",
+	["Double Growth: yours! Plants grow twice as fast"] = "成長2倍パス: 持っています！植物が 2 倍の速さで育つ",
 	["  -  every seed is open"] = "  -  すべてのタネが解放ずみ",
 	["Plain"] = "ふつう",
 	["Garden level"] = "ガーデンレベル",
@@ -207,6 +207,9 @@ local EXACT: { [string]: string } = {
 	["Restock the shop for you"] = "ショップの品ぞろえを入れ替える",
 	["ripens the plant you tended last"] = "最後に世話した植物が、すぐ実る",
 	["Plants grow twice as fast"] = "植物が 2 倍の速さで育つ",
+	["Growth Sprinkler"] = "成長スプリンクラー",
+	["Instant Grow"] = "インスタント成長",
+	["Double Growth pass"] = "成長2倍パス",
 }
 
 -- { English template, Japanese }.
@@ -248,7 +251,7 @@ local TEMPLATES: { { string } } = {
 		"Bought a Spirit Egg for {}. Hatch it in Spirits",
 		"スピリットの卵を {1} コインで買ったよ。スピリットでかえそう",
 	},
-	{ "Instant Grow! The plant is ripe", "Instant Grow！ 植物が実ったよ" },
+	{ "Instant Grow! The plant is ripe", "インスタント成長！ 植物が実ったよ" },
 	{ "Buy Spirit Egg  {}   (you have {})", "スピリットの卵を買う  {1}   (持っている: {2})" },
 	{ "Egg hatches into: {}", "卵から生まれる: {1}" },
 	{ "Garden Lv {}  ({}/{} XP)", "ガーデン Lv {1}  ({2}/{3} XP)" },
@@ -257,17 +260,17 @@ local TEMPLATES: { { string } } = {
 	{ "Restock the shop for you  {} R$", "ショップの品ぞろえを入れ替える  {1} R$" },
 	{
 		"Growth Sprinkler  {} R$  (all plants grow x{} for {} min)",
-		"Growth Sprinkler  {1} R$  (すべての植物が {3} 分間、{2} 倍の速さで育つ)",
+		"成長スプリンクラー  {1} R$  (すべての植物が {3} 分間、{2} 倍の速さで育つ)",
 	},
 	{ "  -  on: {} left", "  -  発動中: 残り {1}" },
-	{ "Use Instant Grow  (you have {})", "Instant Grow を使う  (持っている: {1})" },
+	{ "Use Instant Grow  (you have {})", "インスタント成長を使う  (持っている: {1})" },
 	{
 		"Instant Grow  {} R$  (ripens the plant you tended last)",
-		"Instant Grow  {1} R$  (最後に世話した植物が、すぐ実る)",
+		"インスタント成長  {1} R$  (最後に世話した植物が、すぐ実る)",
 	},
 	{
 		"Double Growth pass  {} R$  (plants grow x{}, forever)",
-		"Double Growth パス  {1} R$  (植物が {2} 倍の速さで育つ・ずっと)",
+		"成長2倍パス  {1} R$  (植物が {2} 倍の速さで育つ・ずっと)",
 	},
 	-- book, ranking, trade
 	{ "Book  {}/{}", "図鑑  {1}/{2}" },

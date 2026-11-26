@@ -36,7 +36,7 @@ local TendFlow = {}
 
 local function seedName(seedId: string): string
 	local seed = Seeds.get(seedId)
-	return if seed then seed.name.en else seedId
+	return if seed then (if Lang.code == "ja" then seed.name.ja else seed.name.en) else seedId
 end
 
 -- Level-ups and newly opened seeds, after a tend or a harvest.
@@ -271,11 +271,11 @@ function TendFlow.start()
 					})
 				end
 				table.insert(rows, {
-					text = seed.name.en,
+					text = seedName(seed.seedId),
 					columns = columns,
 					cells = {
 						{ icon = { kind = "plant", id = seed.seedId } },
-						{ text = seed.name.en, bold = true },
+						{ text = seedName(seed.seedId), bold = true },
 						{ text = `x{count}`, bold = true },
 						{ text = Lang.t("Plant"), pill = BoardCells.pill("Matcha") },
 					},
@@ -283,7 +283,7 @@ function TendFlow.start()
 						seedModal.close()
 						local result = GardenState.call("plant", { seedId = seed.seedId, plotKey = currentPlotKey })
 						if result.ok then
-							Toast.show(`Planted {seed.name.en}! Tend it to make it grow`)
+							Toast.show(`Planted {seedName(seed.seedId)}! Tend it to make it grow`)
 						else
 							Toast.show(result.reason or "could not plant")
 						end

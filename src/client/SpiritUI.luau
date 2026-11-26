@@ -129,7 +129,8 @@ local function rowsFor(snapshot: GardenState.Snapshot, equip: (id: string?) -> b
 			local nick = Spirits.nickname(spirit.nick, Lang.code)
 			local traits = traitText(spirit)
 			local care, bonus = effectLines(def)
-			local name = def.name.en .. (if group.count > 1 then `  \u{00D7}{group.count}` else "")
+			local name = (if Lang.code == "ja" then def.name.ja else def.name.en)
+				.. (if group.count > 1 then `  \u{00D7}{group.count}` else "")
 			table.insert(rows, {
 				lit = equipped,
 				onTap = function()
@@ -163,7 +164,9 @@ function SpiritUI.start()
 		local result = GardenState.call("hatch")
 		if result.ok then
 			local def = Spirits.get(result.kind)
-			Toast.show(`A {if def then def.name.en else result.kind} hatched!`)
+			Toast.show(
+				`A {if def then (if Lang.code == "ja" then def.name.ja else def.name.en) else result.kind} hatched!`
+			)
 		else
 			Toast.show(result.reason or "could not hatch")
 		end
@@ -181,7 +184,7 @@ function SpiritUI.start()
 			for _, spirit in snapshot.spirits do
 				local def = if spirit.id == id then Spirits.get(spirit.kind) else nil
 				if def then
-					name = def.name.en
+					name = if Lang.code == "ja" then def.name.ja else def.name.en
 				end
 			end
 		end
@@ -283,7 +286,7 @@ function SpiritUI.start()
 					end,
 					cells = {
 						{ icon = { kind = "spirit", id = spirit.kind } },
-						{ text = def.name.en, bold = true },
+						{ text = if Lang.code == "ja" then def.name.ja else def.name.en, bold = true },
 						{ text = `Lv {Spirits.levelOf(spirit.xp or 0)}`, bold = true },
 						{ text = hearts(spirit.bond), color = BoardCells.hueText("Sakura") },
 						if called

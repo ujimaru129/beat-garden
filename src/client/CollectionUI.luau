@@ -10,6 +10,7 @@ local BoardCells = require(script.Parent.BoardCells)
 local BoardUI = require(script.Parent.BoardUI)
 local Collection = require(ReplicatedStorage.Shared.Garden.Collection)
 local GardenState = require(script.Parent.GardenState)
+local Lang = require(script.Parent.Lang)
 local MarketUI = require(script.Parent.MarketUI)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
@@ -50,7 +51,11 @@ local function rows(snapshot: GardenState.Snapshot): { BoardUI.Row }
 		local complete = found == total
 		local cells: { BoardUI.Cell } = {
 			{ icon = { kind = "plant", id = seed.seedId } },
-			{ text = seed.name.en, bold = true, color = if complete then BoardCells.GoldText else nil },
+			{
+				text = if Lang.code == "ja" then seed.name.ja else seed.name.en,
+				bold = true,
+				color = if complete then BoardCells.GoldText else nil,
+			},
 			{
 				text = `{found}/{total}`,
 				bold = true,
