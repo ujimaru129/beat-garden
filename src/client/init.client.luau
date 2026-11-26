@@ -35,6 +35,7 @@ local UiTheme = require(script.UiTheme)
 local WorldFx = require(script.WorldFx)
 
 local player = Players.LocalPlayer :: Player
+Lang.keepOwnText(player)
 
 -- The whole interface is made for a landscape phone: ask for landscape (it follows the sensor, so it can still flip
 -- between the two landscape sides). Pcall: the property is missing on some platforms.

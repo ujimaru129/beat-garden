@@ -94,12 +94,24 @@ function Atmosphere.isLite(): boolean
 	return ok and level >= 1 and level <= 3
 end
 
-function Atmosphere.timeOfDay(): string
+local function clockTimeOfDay(): string
 	local forced = player:GetAttribute("ForceTimeOfDay")
 	if forced == "Day" or forced == "Night" then
 		return forced
 	end
 	return DayNight.timeOfDay(Workspace:GetServerTimeNow())
+end
+
+-- A rhythm run keeps the time of day it started with: the lane and notes are built for that light, and turning to
+-- night halfway (grade, bloom, haze, darker ambient, the world's neon) makes the notes hard to read. Everything
+-- that asks `timeOfDay` sees the frozen value until the run ends; then dusk or dawn comes on as usual.
+local frozen: string? = if player:GetAttribute("InRhythm") == true then clockTimeOfDay() else nil
+player:GetAttributeChangedSignal("InRhythm"):Connect(function()
+	frozen = if player:GetAttribute("InRhythm") == true then clockTimeOfDay() else nil
+end)
+
+function Atmosphere.timeOfDay(): string
+	return frozen or clockTimeOfDay()
 end
 
 function Atmosphere.start()

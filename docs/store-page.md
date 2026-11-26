@@ -21,7 +21,7 @@ Walk up to a plant and play a short rhythm run to grow it. Better timing = faste
 🌈 COLLECT MUTATIONS
 Perfect streaks make fruit mutate: Film, Vapor, even Golden Hour. Fill your Book!
 
-🐾 BEAT SPIRITS
+🐾 SPIRIT FRIENDS
 Hatch headphone-wearing spirits. They wander your garden, love being petted, and help you grow, mutate and sell.
 
 🎡 YOUR OWN PARK
