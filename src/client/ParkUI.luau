@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GardenState = require(script.Parent.GardenState)
 local Lang = require(script.Parent.Lang)
+local BoardCells = require(script.Parent.BoardCells)
 local ListModal = require(script.Parent.ListModal)
 local MarketUI = require(script.Parent.MarketUI)
 local Palette = require(ReplicatedStorage.Shared.Palette)
@@ -17,6 +18,18 @@ local Toast = require(script.Parent.Toast)
 local UiTheme = require(script.Parent.UiTheme)
 
 local ParkUI = {}
+
+-- Goals and missions: name | progress | reward. Park items: item | lot | Place.
+local GOAL_COLUMNS: { BoardCells.Column } = {
+	{ title = "", flex = 1 },
+	{ title = "", width = 104, align = "center" },
+	{ title = "", width = 104, align = "center" },
+}
+local ITEM_COLUMNS: { BoardCells.Column } = {
+	{ title = "", flex = 1 },
+	{ title = "", width = 104, align = "center" },
+	{ title = "", width = 96, align = "center" },
+}
 
 type View = { kind: "main" } | { kind: "goals" } | { kind: "daily" }
 
@@ -224,6 +237,30 @@ function ParkUI.start()
 		end
 	end
 
+	-- A dark thin row with the column names.
+	local function headRow(columns: { BoardCells.Column }, titles: { string }): ListModal.Row
+		local cells: { BoardCells.Cell } = {}
+		for _, title in titles do
+			table.insert(cells, { text = title })
+		end
+		return { text = "", head = true, columns = columns, cells = cells }
+	end
+	-- One goal or mission: lit with a green "Done" once it is done.
+	local function goalRow(name: string, progress: number, target: number, done: boolean, reward: string): ListModal.Row
+		return {
+			text = name,
+			columns = GOAL_COLUMNS,
+			selected = done,
+			cells = {
+				{ text = name, bold = true, color = if done then BoardCells.GoldText else nil },
+				{ text = `{progress}/{target}`, bold = true, dim = progress == 0 and not done },
+				if done
+					then { text = Lang.t("Done"), pill = BoardCells.pill("Matcha") }
+					else { text = reward, pill = BoardCells.pill("Yuzu"), dim = progress < target },
+			},
+		}
+	end
+
 	local function mainRows(snapshot: GardenState.Snapshot): { ListModal.Row }
 		local park = snapshot.park
 		local rows: { ListModal.Row } = {}
@@ -288,11 +325,32 @@ function ParkUI.start()
 		elseif not chosen then
 			table.insert(rows, { note = true, text = "1. Tap an empty lot   2. Tap an item" })
 		end
+		if #keys > 0 then
+			table.insert(rows, headRow(ITEM_COLUMNS, { "ITEM", "LOT", "" }))
+		end
+		-- "Place" is lit when an empty lot of the item's kind is chosen at the top.
+		local canPlace = chosen ~= nil and park.placed[chosen.id] == nil
 		for _, key in keys do
 			local lot = where[key]
+			local attraction, palette = Park.parseKey(key)
+			local kind = kindOf(key)
 			table.insert(rows, {
-				text = if lot then `{itemText(key)}  \u{2192} {lotName(lot)}` else itemText(key),
-				color = kindColor(kindOf(key)),
+				text = itemText(key),
+				columns = ITEM_COLUMNS,
+				cells = {
+					{
+						text = if attraction then nameOf(attraction) else key,
+						sub = palette,
+						bold = true,
+						color = BoardCells.ink(kindColor(kind)),
+					},
+					{ text = if lot then lotName(lot) else "-", bold = lot ~= nil, dim = lot == nil },
+					{
+						text = Lang.t("Place"),
+						pill = BoardCells.pill(if kind == "ground" then "Matcha" else "Sakura"),
+						dim = not (canPlace and chosen ~= nil and chosen.kind == kind),
+					},
+				},
 				onTap = function()
 					return putItem(snapshot, key)
 				end,
@@ -304,13 +362,13 @@ function ParkUI.start()
 	local function goalRows(snapshot: GardenState.Snapshot): { ListModal.Row }
 		local park = snapshot.park
 		local rows: { ListModal.Row } = { { text = "Back", onTap = goBack, color = Palette.Hues.Fuji.Night } }
+		table.insert(rows, headRow(GOAL_COLUMNS, { "GOAL", "PROGRESS", "REWARD" }))
 		for _, goal in Park.Goals do
 			local progress = math.min(Park.progressOf(goal, park.stats), goal.target)
-			if park.claimed[goal.id] then
-				table.insert(rows, { text = `\u{2714} {Lang.t(goal.name)}`, color = Palette.Hues.Matcha.Night })
-			else
-				table.insert(rows, { text = `{Lang.t(goal.name)}  ({progress}/{goal.target})` })
-			end
+			table.insert(
+				rows,
+				goalRow(Lang.t(goal.name), progress, goal.target, park.claimed[goal.id] == true, "\u{1F381} x1")
+			)
 		end
 		return rows
 	end
@@ -322,12 +380,18 @@ function ParkUI.start()
 			note = true,
 			text = `Login streak: {daily.streak} days (every 7th day: a Gift Box)`,
 		})
+		table.insert(rows, headRow(GOAL_COLUMNS, { "MISSION", "PROGRESS", "REWARD" }))
 		for _, mission in daily.missions do
-			if mission.claimed then
-				table.insert(rows, { text = `\u{2714} {Lang.t(mission.name)}`, color = Palette.Hues.Matcha.Night })
-			else
-				table.insert(rows, { text = `{Lang.t(mission.name)}  ({mission.progress}/{mission.target})` })
-			end
+			table.insert(
+				rows,
+				goalRow(
+					Lang.t(mission.name),
+					math.min(mission.progress, mission.target),
+					mission.target,
+					mission.claimed,
+					`+{daily.missionCoins}`
+				)
+			)
 		end
 		table.insert(rows, {
 			note = true,
@@ -343,6 +407,7 @@ function ParkUI.start()
 	end
 
 	render = function(snapshot: GardenState.Snapshot)
+		BoardCells.refresh()
 		local current = view
 		if current.kind == "goals" then
 			modal.setHeaderHeight(0)

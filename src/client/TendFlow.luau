@@ -15,11 +15,13 @@ local UserInputService = game:GetService("UserInputService")
 local DifficultyPicker = require(script.Parent.DifficultyPicker)
 local GardenState = require(script.Parent.GardenState)
 local HarvestFx = require(script.Parent.HarvestFx)
+local BoardCells = require(script.Parent.BoardCells)
 local ListModal = require(script.Parent.ListModal)
 local SongSelect = require(script.Parent.SongSelect)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local ResultScreen = require(script.Parent.ResultScreen)
 local RhythmRunner = require(script.Parent.RhythmRunner)
+local Palette = require(ReplicatedStorage.Shared.Palette)
 local Plots = require(ReplicatedStorage.Shared.Garden.Plots)
 local Seeds = require(ReplicatedStorage.Shared.Garden.Seeds)
 local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
@@ -248,13 +250,35 @@ function TendFlow.start()
 			Toast.show("Still loading...")
 			return
 		end
+		-- A table: seed | how many you have | Plant.
+		BoardCells.refresh()
+		local columns: { BoardCells.Column } = {
+			{ title = "", width = 50 },
+			{ title = "SEED", flex = 1 },
+			{ title = "HAVE", width = 72, align = "center" },
+			{ title = "", width = 96, align = "center" },
+		}
 		local rows: { ListModal.Row } = {}
 		for _, seed in Seeds.List do
 			local count = snapshot.seeds[seed.seedId] or 0
 			if count > 0 then
+				if #rows == 0 then
+					table.insert(rows, {
+						text = "",
+						head = true,
+						columns = columns,
+						cells = { { text = "" }, { text = "SEED" }, { text = "HAVE" }, { text = "" } },
+					})
+				end
 				table.insert(rows, {
-					text = `{seed.name.en}  x{count}`,
-					icon = { kind = "plant", id = seed.seedId },
+					text = seed.name.en,
+					columns = columns,
+					cells = {
+						{ icon = { kind = "plant", id = seed.seedId } },
+						{ text = seed.name.en, bold = true },
+						{ text = `x{count}`, bold = true },
+						{ text = Lang.t("Plant"), pill = BoardCells.pill("Matcha") },
+					},
 					onTap = function()
 						seedModal.close()
 						local result = GardenState.call("plant", { seedId = seed.seedId, plotKey = currentPlotKey })
@@ -287,6 +311,7 @@ function TendFlow.start()
 			{ text = `Plot {plotKey}: one more plant growing at a time`, note = true },
 			{
 				text = `Unlock for {price} coins`,
+				color = Palette.Hues.Matcha.Night,
 				onTap = function()
 					unlockModal.close()
 					local result = GardenState.call("unlockPlot", plotKey)
@@ -299,6 +324,7 @@ function TendFlow.start()
 			},
 			{
 				text = "Not now",
+				color = Palette.Rarity.Common,
 				onTap = function()
 					unlockModal.close()
 				end,
@@ -323,6 +349,7 @@ function TendFlow.start()
 			},
 			{
 				text = "Get the Plot Pass",
+				color = Palette.Hues.Yuzu.Night,
 				onTap = function()
 					passModal.close()
 					if Plots.PassId > 0 then
@@ -334,6 +361,7 @@ function TendFlow.start()
 			},
 			{
 				text = "Not now",
+				color = Palette.Rarity.Common,
 				onTap = function()
 					passModal.close()
 				end,

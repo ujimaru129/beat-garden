@@ -12,7 +12,7 @@ local MIN_SECONDS = 2
 local MAX_SECONDS = 3.5
 
 -- Full-screen panels that sit over the usual toast spot: the toast moves above them while one is open.
-local PANELS = { "ListModal", "SongSelect", "DifficultyPicker" }
+local PANELS = { "ListModal", "SongSelect", "DifficultyPicker", "BookBoard", "SpiritBoard" }
 local TEXT_SIZE = 17
 local TOP_Y = 0.17
 local NORMAL_Y = 0.28

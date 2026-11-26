@@ -1,16 +1,17 @@
 --!strict
--- Beat Spirits screen: hatch eggs, equip one spirit. The equipped spirit tends the plant on its own.
+-- Beat Spirits screen, drawn as a ranking-style board (BoardUI): hatch eggs, equip one spirit (tap its row), name
+-- them. The equipped spirit tends the plant on its own.
 -- The server decides what hatches; the odds are shown in the Shop where eggs are sold.
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local BoardCells = require(script.Parent.BoardCells)
+local BoardUI = require(script.Parent.BoardUI)
 local GardenState = require(script.Parent.GardenState)
-local ListModal = require(script.Parent.ListModal)
 local MarketUI = require(script.Parent.MarketUI)
 local UiTheme = require(script.Parent.UiTheme)
-local Palette = require(ReplicatedStorage.Shared.Palette)
 local Spirits = require(ReplicatedStorage.Shared.Garden.Spirits)
 local Lang = require(script.Parent.Lang)
 local TipsUI = require(script.Parent.TipsUI)
@@ -24,14 +25,8 @@ local function hearts(bond: number?): string
 	return string.rep("\u{2665}", level) .. string.rep("\u{2661}", Spirits.MaxBondLevel - level)
 end
 
--- "Spirit Lv 3": named so it is not taken for the garden level.
-local function levelLabel(level: number): string
-	return if Lang.code == "ja" then `\u{30B9}\u{30D4}\u{30EA}\u{30C3}\u{30C8} Lv {level}` else `Spirit Lv {level}`
-end
-
--- "Spirit Lv 3" and, when it has grown any, the names of its traits: "Glow, Cloud Ride".
-local function growthText(spirit: { xp: number?, traits: { string }? }): (string, string)
-	local level = Spirits.levelOf(spirit.xp or 0)
+-- The names of the traits a spirit has grown: "Glow, Cloud Ride".
+local function traitText(spirit: { traits: { string }? }): string
 	local names: { string } = {}
 	local owned: { string } = if spirit.traits then spirit.traits else {}
 	for _, id in owned do
@@ -40,63 +35,39 @@ local function growthText(spirit: { xp: number?, traits: { string }? }): (string
 			table.insert(names, if Lang.code == "ja" then trait.name.ja else trait.name.en)
 		end
 	end
-	return levelLabel(level), table.concat(names, ", ")
+	return table.concat(names, ", ")
 end
 
--- One short line: "Tends every 60s (+6) / mutations x1.3".
-local function effectText(def: Spirits.Def): string
-	local text = Lang.t(`Tends every {def.autoCareSeconds}s (+{def.autoCarePoints})`)
-	if def.mutationMult > 1 then
-		text ..= Lang.t(` / mutations x{def.mutationMult}`)
+-- Two short lines for the EFFECT column: "Every 60s +6" and "Mutation x1.3  Sell x1.1".
+local function effectLines(def: Spirits.Def): (string, string)
+	local care = Lang.t(`Every {def.autoCareSeconds}s +{def.autoCarePoints}`)
+	local bonuses: { string } = {}
+	local function add(mult: number, english: string)
+		if mult > 1 then
+			table.insert(bonuses, Lang.t(`{english} x{mult}`))
+		end
 	end
-	if def.tendMult > 1 then
-		text ..= Lang.t(` / your tends grow x{def.tendMult}`)
-	end
-	if def.discoveryMult > 1 then
-		text ..= Lang.t(` / book coins x{def.discoveryMult}`)
-	end
-	if def.sellMult > 1 then
-		text ..= Lang.t(` / sells x{def.sellMult}`)
-	end
-	if def.freshMult > 1 then
-		text ..= Lang.t(` / fruit stays fresh x{def.freshMult}`)
-	end
-	return text
+	add(def.mutationMult, "Mutation")
+	add(def.tendMult, "Tend")
+	add(def.discoveryMult, "Book coins")
+	add(def.sellMult, "Sell")
+	add(def.freshMult, "Fresh")
+	return care, table.concat(bonuses, "  ")
 end
 
-local function rowsFor(
-	snapshot: GardenState.Snapshot,
-	hatch: () -> boolean,
-	equip: (id: string?) -> boolean,
-	openNames: () -> ()
-): { ListModal.Row }
-	local rows: { ListModal.Row } = {}
-	-- The equipped spirit's own row goes first (lit up with a check), then eggs and names, then the others.
-	local hasEquipped = false
-	for _, spirit in snapshot.spirits do
-		hasEquipped = hasEquipped or spirit.id == snapshot.equippedSpirit
-	end
-	if not hasEquipped and #snapshot.spirits > 0 then
-		table.insert(rows, { note = true, text = "No spirit is with you. Tap one below to equip it" })
-	end
-	if snapshot.eggs > 0 then
-		table.insert(rows, {
-			text = `Hatch an egg   (you have {snapshot.eggs})`,
-			color = Palette.Hues.Fuji.Night,
-			onTap = hatch,
-		})
-	else
-		table.insert(rows, { text = "No eggs. Buy one at the Shop" })
-	end
+local MAIN_COLUMNS: { BoardUI.Column } = {
+	{ title = "", width = 50 },
+	{ title = "SPIRIT", flex = 1 },
+	{ title = "LEVEL", width = 84, align = "center" },
+	{ title = "BOND", width = 92, align = "center" },
+	{ title = "EFFECT", flex = 1.1 },
+	{ title = "", width = 96, align = "center" },
+}
 
-	if #snapshot.spirits == 0 then
-		table.insert(rows, { text = "You have no spirits yet" })
-	else
-		table.insert(rows, { text = "Give your spirits names", color = Palette.Hues.Sora.Night, onTap = openNames })
-	end
-	-- One row per kind ("Koke x3"): the spirits of a kind are shown as the one that counts (the equipped one, else the
-	-- most petted, else the first hatched). Rows: the equipped kind first, then the most petted, then the kind in the
-	-- order of the Spirits list.
+-- One row per kind and level ("Koke x3"): the spirits of a kind are shown as the one that counts (the equipped one,
+-- else the most grown, else the most petted). The equipped row first, then the most petted, then the Spirits order.
+local function rowsFor(snapshot: GardenState.Snapshot, equip: (id: string?) -> boolean): { BoardUI.Row }
+	BoardCells.refresh()
 	type Group = { kind: string, best: any, count: number, equipped: boolean, order: number, level: number }
 	local groups: { [string]: Group } = {}
 	local order: { Group } = {}
@@ -148,26 +119,38 @@ local function rowsFor(
 		end
 		return a.level > b.level
 	end)
+
+	local rows: { BoardUI.Row } = {}
 	for _, group in order do
 		local def = Spirits.get(group.kind)
 		if def then
 			local spirit = group.best
 			local equipped = group.equipped
-			local called = Spirits.nickname(spirit.nick, Lang.code) or def.name.en
-			local title = Lang.t(if equipped then `Equipped: {called}` else `Equip {called}`)
-			local levelText, traitText = growthText(spirit)
-			local row: ListModal.Row = {
-				text = `{hearts(spirit.bond)}  {title}  {levelText}{if group.count > 1
-					then `  \u{00D7}{group.count}`
-					else ""}\n{effectText(def)}{if traitText ~= "" then `\n\u{2728} {traitText}` else ""}`,
-				color = if equipped then Palette.Hues.Yuzu.Night else nil,
-				selected = equipped,
-				icon = { kind = "spirit", id = group.kind },
+			local nick = Spirits.nickname(spirit.nick, Lang.code)
+			local traits = traitText(spirit)
+			local care, bonus = effectLines(def)
+			local name = def.name.en .. (if group.count > 1 then `  \u{00D7}{group.count}` else "")
+			table.insert(rows, {
+				lit = equipped,
 				onTap = function()
-					return equip(if equipped then nil else spirit.id)
+					equip(if equipped then nil else spirit.id)
 				end,
-			}
-			table.insert(rows, if equipped then 1 else #rows + 1, row)
+				cells = {
+					{ icon = { kind = "spirit", id = group.kind } },
+					{
+						text = if nick then nick else name,
+						sub = if nick then name elseif traits ~= "" then `\u{2728} {traits}` else nil,
+						bold = true,
+						color = if equipped then BoardCells.GoldText else nil,
+					},
+					{ text = `Lv {group.level}`, bold = true },
+					{ text = hearts(spirit.bond), color = BoardCells.hueText("Sakura") },
+					{ text = care, sub = if bonus ~= "" then bonus else nil },
+					if equipped
+						then { text = Lang.t("Equipped"), pill = BoardCells.Gold }
+						else { text = Lang.t("Equip"), pill = BoardCells.pill("Sora") },
+				},
+			})
 		end
 	end
 	return rows
@@ -206,10 +189,10 @@ function SpiritUI.start()
 		return true
 	end
 
-	local modal = ListModal.create("Spirits", function()
+	local modal = BoardUI.create("SpiritBoard", function()
 		ProximityPromptService.Enabled = true
 	end)
-	-- Screens inside the modal: the spirits (main), the list to choose whom to name (names), and the names for one
+	-- Screens inside the board: the spirits (main), the list to choose whom to name (names), and the names for one
 	-- spirit (pick).
 	type View = { kind: "main" } | { kind: "names" } | { kind: "pick", id: string }
 	local view: View = { kind = "main" }
@@ -223,17 +206,55 @@ function SpiritUI.start()
 		end
 	end
 
-	local function namesRows(snapshot: GardenState.Snapshot): { ListModal.Row }
-		local rows: { ListModal.Row } = {
-			{
-				text = "Back",
-				color = Palette.Hues.Fuji.Night,
+	local function renderMain(snapshot: GardenState.Snapshot)
+		modal.setTitle("Spirits")
+		local actions: { BoardUI.Action } = {}
+		if #snapshot.spirits > 0 then
+			table.insert(actions, {
+				label = "Names",
+				width = 96,
+				hue = "Sora",
 				onTap = function()
-					setView({ kind = "main" })
+					setView({ kind = "names" })
 				end,
-			},
-			{ note = true, text = "Tap a spirit to choose its name" },
+			})
+		end
+		if snapshot.eggs > 0 then
+			table.insert(actions, {
+				label = `Hatch Egg ({snapshot.eggs})`,
+				width = 150,
+				hue = "Fuji",
+				onTap = function()
+					hatch()
+				end,
+			})
+		end
+		local hasEquipped = false
+		for _, spirit in snapshot.spirits do
+			hasEquipped = hasEquipped or spirit.id == snapshot.equippedSpirit
+		end
+		local note = if #snapshot.spirits > 0 and not hasEquipped
+			then "No spirit is with you. Tap one below to equip it"
+			elseif snapshot.eggs == 0 then "No eggs. Buy one at the Shop"
+			else "Tap the equipped one again to put it away"
+		modal.setBar(note, actions)
+		modal.setTable(MAIN_COLUMNS, rowsFor(snapshot, equip), "You have no spirits yet")
+	end
+
+	local function back(to: View): BoardUI.Action
+		return {
+			label = "Back",
+			width = 96,
+			hue = "Fuji",
+			onTap = function()
+				setView(to)
+			end,
 		}
+	end
+
+	local function renderNames(snapshot: GardenState.Snapshot)
+		modal.setTitle("Names")
+		modal.setBar("Tap a spirit to choose its name", { back({ kind = "main" }) })
 		local kindOrder: { [string]: number } = {}
 		for index, def in Spirits.List do
 			kindOrder[def.kind] = index
@@ -249,84 +270,94 @@ function SpiritUI.start()
 			end
 			return (kindOrder[a.kind] or 99) < (kindOrder[b.kind] or 99)
 		end)
+		BoardCells.refresh()
+		local rows: { BoardUI.Row } = {}
 		for _, spirit in ordered do
 			local def = Spirits.get(spirit.kind)
 			if def then
 				local called = Spirits.nickname(spirit.nick, Lang.code)
 				table.insert(rows, {
-					text = `{hearts(spirit.bond)}  {def.name.en}  {levelLabel(Spirits.levelOf(spirit.xp or 0))}{if called
-						then `  \u{300C}{called}\u{300D}`
-						else ""}`,
-					selected = spirit.id == snapshot.equippedSpirit,
-					icon = { kind = "spirit", id = spirit.kind },
+					lit = spirit.id == snapshot.equippedSpirit,
 					onTap = function()
 						setView({ kind = "pick", id = spirit.id })
 					end,
+					cells = {
+						{ icon = { kind = "spirit", id = spirit.kind } },
+						{ text = def.name.en, bold = true },
+						{ text = `Lv {Spirits.levelOf(spirit.xp or 0)}`, bold = true },
+						{ text = hearts(spirit.bond), color = BoardCells.hueText("Sakura") },
+						if called
+							then { text = called, bold = true, color = BoardCells.GoldText }
+							else { text = Lang.t("No name"), dim = true },
+					},
 				})
 			end
 		end
-		return rows
+		modal.setTable({
+			{ title = "", width = 50 },
+			{ title = "SPIRIT", flex = 1 },
+			{ title = "LEVEL", width = 84, align = "center" },
+			{ title = "BOND", width = 92, align = "center" },
+			{ title = "NAME", flex = 1 },
+		}, rows, "You have no spirits yet")
 	end
 
-	local function pickRows(snapshot: GardenState.Snapshot, id: string): { ListModal.Row }
-		local rows: { ListModal.Row } = {
-			{
-				text = "Back",
-				color = Palette.Hues.Fuji.Night,
-				onTap = function()
-					setView({ kind = "names" })
-				end,
-			},
-		}
+	local function renderPick(snapshot: GardenState.Snapshot, id: string)
+		modal.setTitle("Names")
+		modal.setBar("Choose a name:", { back({ kind = "names" }) })
 		local current: number? = nil
 		for _, spirit in snapshot.spirits do
 			if spirit.id == id then
 				current = spirit.nick
 			end
 		end
-		table.insert(rows, { note = true, text = "Choose a name:" })
-		local function choose(nick: number?): boolean
+		local function choose(nick: number?)
 			local result = GardenState.call("nameSpirit", { id = id, nick = nick })
 			if not result.ok then
 				Toast.show(result.reason or "that did not work")
-				return false
+				return
 			end
 			setView({ kind = "names" })
-			return true
 		end
+		-- "No name" first (when it has one), then the fixed names.
+		local entries: { { text: string, nick: number? } } = {}
 		if current then
-			table.insert(rows, {
-				text = "No name",
-				onTap = function()
-					return choose(nil)
-				end,
-			})
+			table.insert(entries, { text = Lang.t("No name"), nick = nil })
 		end
 		for index, entry in Spirits.Nicknames do
-			table.insert(rows, {
-				text = if Lang.code == "ja" then entry.ja else entry.en,
-				selected = current == index,
+			table.insert(entries, { text = if Lang.code == "ja" then entry.ja else entry.en, nick = index })
+		end
+		-- Four names to a row, so all of them fit on a phone screen; the current one is gold.
+		BoardCells.refresh()
+		local PER_ROW = 4
+		local rows: { BoardUI.Row } = {}
+		for i, entry in entries do
+			local rowIndex = (i - 1) // PER_ROW + 1
+			rows[rowIndex] = rows[rowIndex] or { cells = {} }
+			local isCurrent = entry.nick ~= nil and entry.nick == current
+			table.insert(rows[rowIndex].cells, {
+				text = entry.text,
+				pill = if isCurrent then BoardCells.Gold else BoardCells.pill("Sora"),
 				onTap = function()
-					return choose(index)
+					choose(entry.nick)
 				end,
 			})
 		end
-		return rows
+		local columns: { BoardUI.Column } = {}
+		for _ = 1, PER_ROW do
+			table.insert(columns, { title = "", flex = 1, align = "center" })
+		end
+		modal.setTable(columns, rows)
 	end
 
 	render = function(snapshot: GardenState.Snapshot)
 		local current = view
 		if current.kind == "names" then
-			modal.setTitle("Names")
-			modal.setRows(namesRows(snapshot))
+			renderNames(snapshot)
 		elseif current.kind == "pick" then
-			modal.setTitle("Names")
-			modal.setRows(pickRows(snapshot, current.id))
+			renderPick(snapshot, current.id)
 		else
-			modal.setTitle("Spirits")
-			modal.setRows(rowsFor(snapshot, hatch, equip, function()
-				setView({ kind = "names" })
-			end))
+			renderMain(snapshot)
 		end
 	end
 	GardenState.onChanged(function(snapshot)

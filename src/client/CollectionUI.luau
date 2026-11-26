@@ -1,14 +1,15 @@
 --!strict
--- The collection book: a HUD button that opens the list of seeds with the variants (plain fruit and
--- mutations) discovered so far. Discovering a variant happens on the server at harvest.
+-- The collection book: a HUD button that opens a ranking-style board (BoardUI) of the seeds and the variants (plain
+-- fruit and mutations) discovered so far. Discovering a variant happens on the server at harvest.
 
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local BoardCells = require(script.Parent.BoardCells)
+local BoardUI = require(script.Parent.BoardUI)
 local Collection = require(ReplicatedStorage.Shared.Garden.Collection)
 local GardenState = require(script.Parent.GardenState)
-local ListModal = require(script.Parent.ListModal)
 local MarketUI = require(script.Parent.MarketUI)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
@@ -22,31 +23,57 @@ local function variantName(variant: string): string
 	return if variant == Collection.Plain then "Plain" else Mutations.displayName(variant)
 end
 
-local function rows(snapshot: GardenState.Snapshot): { ListModal.Row }
-	local list: { ListModal.Row } = {}
+-- The pill of a variant: plain fruit in Sora, a mutation in its own colour (Palette.Mutation).
+local function variantColor(variant: string): Color3
+	local colors = (Palette.Mutation :: any)[variant]
+	return if colors then colors[1] else BoardCells.pill("Sora")
+end
+
+local function columns(): { BoardUI.Column }
+	local list: { BoardUI.Column } = {
+		{ title = "", width = 50 },
+		{ title = "SEED", flex = 1 },
+		{ title = "FOUND", width = 62, align = "center" },
+	}
+	for _, variant in Collection.Variants do
+		table.insert(list, { title = variantName(variant), width = 76, align = "center" })
+	end
+	return list
+end
+
+-- One row per seed: the fruit, the name, how many of its variants are found, then a pill per variant.
+local function rows(snapshot: GardenState.Snapshot): { BoardUI.Row }
+	BoardCells.refresh()
+	local list: { BoardUI.Row } = {}
 	for _, seed in Seeds.List do
 		local found, total = Collection.seedProgress(snapshot.collection, seed.seedId)
-		local marks: { string } = {}
+		local complete = found == total
+		local cells: { BoardUI.Cell } = {
+			{ icon = { kind = "plant", id = seed.seedId } },
+			{ text = seed.name.en, bold = true, color = if complete then BoardCells.GoldText else nil },
+			{
+				text = `{found}/{total}`,
+				bold = true,
+				color = if complete then BoardCells.GoldText else nil,
+				dim = found == 0,
+			},
+		}
 		for _, variant in Collection.Variants do
 			local known = snapshot.collection[`{seed.seedId}|{variant}`]
-			table.insert(marks, if known then `\u{25CF} {variantName(variant)}` else "\u{25CB} ???")
+			table.insert(cells, {
+				text = if known then "\u{2713}" else "???",
+				pill = variantColor(variant),
+				dim = not known,
+			})
 		end
-		table.insert(list, {
-			text = `{seed.name.en}  {found}/{total}   {table.concat(marks, "  ")}`,
-			color = if found == total then Palette.Hues.Yuzu.Night else nil,
-			icon = { kind = "plant", id = seed.seedId },
-		})
+		table.insert(list, { cells = cells, lit = complete })
 	end
-	table.insert(list, {
-		note = true,
-		text = `Plain fruit +{Collection.Reward.Normal}, mutations up to +{Collection.Reward.GoldenHour} coins. Complete a seed: +{Collection.CompletionEggs} Spirit Egg`,
-	})
 	return list
 end
 
 function CollectionUI.start()
 	local player = Players.LocalPlayer :: Player
-	local modal = ListModal.create("Book", function()
+	local modal = BoardUI.create("BookBoard", function()
 		ProximityPromptService.Enabled = true
 	end)
 
@@ -61,7 +88,10 @@ function CollectionUI.start()
 	local function rebuild(snapshot: GardenState.Snapshot)
 		local found, total = Collection.progress(snapshot.collection)
 		modal.setTitle(`Book  {found}/{total}`)
-		modal.setRows(rows(snapshot))
+		modal.setBar(
+			`Plain fruit +{Collection.Reward.Normal}, mutations up to +{Collection.Reward.GoldenHour} coins. Complete a seed: +{Collection.CompletionEggs} Spirit Egg`
+		)
+		modal.setTable(columns(), rows(snapshot))
 	end
 
 	GardenState.onChanged(function(snapshot)

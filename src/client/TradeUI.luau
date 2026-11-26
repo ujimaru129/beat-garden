@@ -7,7 +7,9 @@ local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local BoardCells = require(script.Parent.BoardCells)
 local GardenState = require(script.Parent.GardenState)
+local Lang = require(script.Parent.Lang)
 local ListModal = require(script.Parent.ListModal)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
 local Palette = require(ReplicatedStorage.Shared.Palette)
@@ -54,19 +56,65 @@ local function copyOffer(offer: Offer): Offer
 	return { fruits = table.clone(offer.fruits), seeds = table.clone(offer.seeds), spirits = table.clone(offer.spirits) }
 end
 
--- One text line per item described by the server ({fruits, seeds, spirits}), capped for small screens.
-local function itemLines(items: any): { string }
-	local lines: { string } = {}
+-- The items of a trade as table rows: picture | name | count or value | Add / Remove.
+local ITEM_COLUMNS: { BoardCells.Column } = {
+	{ title = "", width = 50 },
+	{ title = "", flex = 1 },
+	{ title = "", width = 84, align = "right" },
+	{ title = "", width = 96, align = "center" },
+}
+
+type ItemCell = { icon: any, name: string, sub: string?, info: string, gold: boolean? }
+
+local function itemRow(item: ItemCell, pill: string?, hue: string?, onTap: (() -> ())?): ListModal.Row
+	return {
+		text = item.name,
+		columns = ITEM_COLUMNS,
+		cells = {
+			{ icon = item.icon },
+			{
+				text = item.name,
+				sub = item.sub,
+				bold = true,
+				color = if item.gold then BoardCells.GoldText else nil,
+			},
+			{ text = item.info, bold = true },
+			if pill and hue then { text = Lang.t(pill), pill = BoardCells.pill(hue) } else {},
+		},
+		onTap = onTap,
+	}
+end
+
+local function fruitItem(fruit: any, info: string): ItemCell
+	return {
+		icon = { kind = "plant", id = fruit.seedId, mutation = fruit.mutation },
+		name = fruitLabel(fruit.seedId, fruit.mutation),
+		info = info,
+		gold = fruit.mutation ~= nil,
+	}
+end
+
+local function seedItem(seedId: string, count: number): ItemCell
+	return { icon = { kind = "plant", id = seedId }, name = seedName(seedId), sub = Lang.t("Seed"), info = `x{count}` }
+end
+
+local function spiritItem(kind: string): ItemCell
+	return { icon = { kind = "spirit", id = kind }, name = spiritName(kind), sub = Lang.t("Spirit"), info = "" }
+end
+
+-- One item per thing described by the server ({fruits, seeds, spirits}).
+local function itemCells(items: any): { ItemCell }
+	local list: { ItemCell } = {}
 	for _, fruit in items.fruits do
-		table.insert(lines, `{fruitLabel(fruit.seedId, fruit.mutation)}  ({fruit.value})`)
+		table.insert(list, fruitItem(fruit, `{fruit.value}`))
 	end
 	for _, seed in items.seeds do
-		table.insert(lines, `{seedName(seed.seedId)} seed x{seed.count}`)
+		table.insert(list, seedItem(seed.seedId, seed.count))
 	end
 	for _, spirit in items.spirits do
-		table.insert(lines, `Spirit: {spiritName(spirit.kind)}`)
+		table.insert(list, spiritItem(spirit.kind))
 	end
-	return lines
+	return list
 end
 
 function TradeUI.start()
@@ -102,7 +150,13 @@ function TradeUI.start()
 		end
 	end
 
+	-- A section label: a dark thin bar like the head row of a table.
+	local function section(label: string): ListModal.Row
+		return { text = label, head = true, columns = { { title = "", flex = 1 } }, cells = { { text = label } } }
+	end
+
 	local function buildRows(v: View): { ListModal.Row }
+		BoardCells.refresh()
 		local rows: { ListModal.Row } = {}
 		local partner = v.partner.name
 
@@ -155,36 +209,36 @@ function TradeUI.start()
 		})
 
 		-- What they offer (read only).
-		table.insert(rows, { text = `{partner} offers:` })
-		local theirs = itemLines(v.theirItems)
+		table.insert(rows, section(`{partner} offers:`))
+		local theirs = itemCells(v.theirItems)
 		if #theirs == 0 then
 			table.insert(rows, { text = "  (nothing yet)" })
 		end
-		for i, line in theirs do
+		for i, item in theirs do
 			if i > MAX_DETAIL_ROWS then
 				table.insert(rows, { text = `  ...and {#theirs - MAX_DETAIL_ROWS} more` })
 				break
 			end
-			table.insert(rows, { text = `  {line}` })
+			table.insert(rows, itemRow(item))
 		end
 
 		-- What I offer: tap an item to take it back.
-		table.insert(rows, { text = "You offer (tap to remove):" })
+		table.insert(rows, section("You offer (tap to remove):"))
 		local offer = v.myOffer
 		for i, fruit in v.myItems.fruits do
-			table.insert(rows, {
-				text = `  - {fruitLabel(fruit.seedId, fruit.mutation)}  ({fruit.value})`,
-				onTap = function()
+			table.insert(
+				rows,
+				itemRow(fruitItem(fruit, `{fruit.value}`), "Remove", "Sakura", function()
 					local next = copyOffer(offer)
 					table.remove(next.fruits, i)
 					setOffer(next)
-				end,
-			})
+				end)
+			)
 		end
 		for seedId, count in offer.seeds do
-			table.insert(rows, {
-				text = `  - {seedName(seedId)} seed x{count}`,
-				onTap = function()
+			table.insert(
+				rows,
+				itemRow(seedItem(seedId, count), "Remove", "Sakura", function()
 					local next = copyOffer(offer)
 					if count > 1 then
 						next.seeds[seedId] = count - 1
@@ -192,18 +246,18 @@ function TradeUI.start()
 						next.seeds[seedId] = nil
 					end
 					setOffer(next)
-				end,
-			})
+				end)
+			)
 		end
 		for i, spirit in v.myItems.spirits do
-			table.insert(rows, {
-				text = `  - Spirit: {spiritName(spirit.kind)}`,
-				onTap = function()
+			table.insert(
+				rows,
+				itemRow(spiritItem(spirit.kind), "Remove", "Sakura", function()
 					local next = copyOffer(offer)
 					table.remove(next.spirits, i)
 					setOffer(next)
-				end,
-			})
+				end)
+			)
 		end
 		if #offer.fruits == 0 and next(offer.seeds) == nil and #offer.spirits == 0 then
 			table.insert(rows, { text = "  (nothing yet)" })
@@ -212,19 +266,18 @@ function TradeUI.start()
 		-- My bag: tap to add.
 		local mine = GardenState.get()
 		if mine then
-			table.insert(rows, { text = "Add from your bag:" })
+			table.insert(rows, section("Add from your bag:"))
 			for _, seed in Seeds.List do
 				local left = (mine.seeds[seed.seedId] or 0) - (offer.seeds[seed.seedId] or 0)
 				if left > 0 then
-					table.insert(rows, {
-						text = `+ {seed.name.en} seed   (you have {left})`,
-						color = Palette.Hues.Sora.Night,
-						onTap = function()
+					table.insert(
+						rows,
+						itemRow(seedItem(seed.seedId, left), "Add", "Sora", function()
 							local next = copyOffer(offer)
 							next.seeds[seed.seedId] = (next.seeds[seed.seedId] or 0) + 1
 							setOffer(next)
-						end,
-					})
+						end)
+					)
 				end
 			end
 
@@ -244,15 +297,14 @@ function TradeUI.start()
 							available += 1
 						end
 					end
-					table.insert(rows, {
-						text = `+ {fruitLabel(fruit.seedId, fruit.mutation)}   x{available}`,
-						color = Palette.Hues.Sora.Night,
-						onTap = function()
+					table.insert(
+						rows,
+						itemRow(fruitItem(fruit, `x{available}`), "Add", "Sora", function()
 							local next = copyOffer(offer)
 							table.insert(next.fruits, index)
 							setOffer(next)
-						end,
-					})
+						end)
+					)
 				end
 			end
 
@@ -262,15 +314,14 @@ function TradeUI.start()
 			end
 			for _, spirit in mine.spirits do
 				if not offeredSpirits[spirit.id] then
-					table.insert(rows, {
-						text = `+ Spirit: {spiritName(spirit.kind)}`,
-						color = Palette.Hues.Fuji.Night,
-						onTap = function()
+					table.insert(
+						rows,
+						itemRow(spiritItem(spirit.kind), "Add", "Fuji", function()
 							local next = copyOffer(offer)
 							table.insert(next.spirits, spirit.id)
 							setOffer(next)
-						end,
-					})
+						end)
+					)
 				end
 			end
 		end

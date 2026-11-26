@@ -1,18 +1,19 @@
 --!strict
--- A simple full-screen modal with a title and a scrolling list of big tappable rows.
--- Touch first: rows are at least 56px high. Tapping outside the panel or the X closes it.
--- Prototype look; the final design comes later.
+-- A full-screen modal with a title and a scrolling list of big tappable rows, drawn as the ranking-style board
+-- (BoardCells). A row is either one line of text or a table row (`cells` under `columns`, with an optional head row).
+-- The board's colours follow the time of day (BoardCells.refresh): they are worked out again on open and on every
+-- redraw of the rows.
+-- Touch first: rows are at least 52px high. Tapping outside the panel or the X closes it.
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local ScrollThumb = require(script.Parent.ScrollThumb)
-local PlantLook = require(ReplicatedStorage.Shared.Garden.PlantLook)
-local SpiritModel = require(script.Parent.SpiritModel)
+local BoardCells = require(script.Parent.BoardCells)
+local RowIcon = require(script.Parent.RowIcon)
 local Lang = require(script.Parent.Lang)
 local UiTheme = require(script.Parent.UiTheme)
 
@@ -25,7 +26,12 @@ export type Row = {
 	onTap: (() -> boolean?)?,
 	-- A small 3D picture at the left of the row: a spirit (id = its kind) or a plant's fruit (id = the seed, with
 	-- the mutation if there is one).
-	icon: { kind: "spirit" | "plant", id: string, mutation: string? }?,
+	icon: RowIcon.Icon?,
+	-- A table row instead of one line of text: these cells under these columns (BoardCells). With `head`, the
+	-- cells are the column names (a dark thin row).
+	cells: { BoardCells.Cell }?,
+	columns: { BoardCells.Column }?,
+	head: boolean?,
 	selected: boolean?, -- the chosen one (the equipped spirit ...): drawn lit up with a white frame and a check
 	note: boolean?, -- a long explanation: scaled on its own, and it does not set the common text size
 }
@@ -51,6 +57,7 @@ local NOTE_MIN_HEIGHT = 34
 local MAX_TEXT = 26
 local MIN_TEXT = 18 -- smaller than this is hard to read on a phone: longer rows wrap instead
 local NOTE_TEXT = 17
+local COMPACT_TABLE_ROW = 42 -- a table row in a compact list (the Park's items)
 
 local function make(className: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(className)
@@ -61,44 +68,12 @@ local function make(className: string, props: { [string]: any }, parent: Instanc
 	return inst
 end
 
--- A small 3D picture for the left of a row (a spirit, or a plant's fruit). A ViewportFrame is the costly kind of
--- picture, so the list only shows the ones that are on screen (see showVisibleIcons).
-local function makeIcon(icon: { kind: string, id: string, mutation: string? }, lit: boolean): ViewportFrame
-	local viewport = Instance.new("ViewportFrame")
-	viewport.Name = "RowIcon"
+-- A small 3D picture at the left of a text row (RowIcon). Only the pictures on screen are drawn (showVisibleIcons).
+local function makeIcon(icon: RowIcon.Icon, lit: boolean): ViewportFrame
+	local viewport = BoardCells.icon(icon, lit, ICON_SPACE - 8)
 	viewport.AnchorPoint = Vector2.new(0, 0.5)
 	-- The row's padding pushes children in: this puts the picture at the row's left edge, centred.
 	viewport.Position = UDim2.new(0, -(14 + ICON_SPACE) + 8, 0.5, 0)
-	viewport.Size = UDim2.fromOffset(ICON_SPACE - 8, ICON_SPACE - 8)
-	viewport.BackgroundTransparency = if lit then 0.55 else 0.8
-	viewport.BackgroundColor3 = Color3.new(1, 1, 1)
-	viewport.Ambient = Color3.fromRGB(190, 190, 205)
-	viewport.LightColor = Color3.new(1, 1, 1)
-	viewport.LightDirection = Vector3.new(-0.4, -1, -0.6)
-	viewport.ZIndex = 6
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = viewport
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 30
-	if icon.kind == "plant" then
-		-- the grown fruit, drawn with the same code as the plants in the garden
-		local model = Instance.new("Model")
-		model.Parent = viewport
-		local core = Instance.new("Part")
-		core.Anchored = true
-		core.CanCollide = false
-		core.Parent = model
-		local parts = Instance.new("Folder")
-		parts.Parent = model
-		PlantLook.apply(core, parts, Vector3.zero, icon.id, "Fruit", 1, icon.mutation, 0, 0.3)
-		camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.5, -7.5), Vector3.new(0, 1.35, 0))
-	else
-		SpiritModel.create(icon.id).Parent = viewport
-		camera.CFrame = CFrame.lookAt(Vector3.new(0, 1.9, -7.2), Vector3.new(0, 1.65, 0))
-	end
-	camera.Parent = viewport
-	viewport.CurrentCamera = camera
 	return viewport
 end
 
@@ -164,37 +139,32 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	local panel = make("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		-- Lower than centre: the Roblox menu buttons sit in the top-left corner and cover anything there.
-		Position = UDim2.fromScale(0.5, 0.6),
-		Size = UDim2.fromScale(0.8, 0.7),
+		Position = UDim2.fromScale(0.5, 0.57),
+		Size = UDim2.fromScale(0.92, 0.8),
 		Active = true, -- swallow taps so they do not reach the backdrop
 	}, backdrop) :: Frame
-	make("UISizeConstraint", { MaxSize = Vector2.new(560, 440) }, panel)
+	make("UISizeConstraint", { MaxSize = Vector2.new(780, 470) }, panel)
 
 	local titleLabel = make("TextLabel", {
-		Position = UDim2.fromOffset(16, 8),
-		Size = UDim2.new(1, -80, 0, 44),
+		Position = UDim2.fromOffset(16, 10),
+		Size = UDim2.new(1, -80, 0, 38),
 		BackgroundTransparency = 1,
 		Text = Lang.t(title),
 		TextScaled = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, panel) :: TextLabel
 
-	local closeButton = make("TextButton", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -10, 0, 8),
-		Size = UDim2.fromOffset(48, 48),
-		Text = "X",
-		TextScaled = true,
-	}, panel) :: TextButton
-	make("UITextSizeConstraint", { MaxTextSize = 24 }, closeButton)
+	local closeButton = BoardCells.closeButton(panel)
+	closeButton.Position = UDim2.new(1, -10, 0, 10)
 
-	-- The look follows the time of day, so it is applied again every time the modal opens.
+	-- The look follows the time of day, so it is applied again every time the modal opens or redraws its rows.
 	local currentTheme = UiTheme.get()
 	local function restyle()
-		currentTheme = UiTheme.get()
-		UiTheme.stylePanel(panel, currentTheme, 18)
-		UiTheme.styleText(titleLabel, currentTheme, "head")
-		UiTheme.styleButton(closeButton, currentTheme, "Sakura", 24)
+		currentTheme = BoardCells.refresh()
+		BoardCells.styleBoard(panel)
+		BoardCells.styleClose(closeButton)
+		titleLabel.Font = currentTheme.head
+		titleLabel.TextColor3 = BoardCells.Text
 	end
 	restyle()
 
@@ -207,7 +177,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 	}, panel) :: ScrollingFrame
-	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	make("UIListLayout", { Padding = UDim.new(0, BoardCells.Gap), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	ScrollThumb.attach(list, panel, UDim2.new(1, -6, 0, 68), UDim2.new(0, 5, 1, -84))
 
 	local header = make("Frame", {
@@ -304,22 +274,35 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 	local modal: Modal
 
 	local rowHeight, maxText, minText, noteText, noteMin = ROW_HEIGHT, MAX_TEXT, MIN_TEXT, NOTE_TEXT, NOTE_MIN_HEIGHT
+	local compact = false
 	local layout = list:FindFirstChildOfClass("UIListLayout")
 	local function setCompact(on: boolean)
+		compact = on
 		rowHeight = if on then 36 else ROW_HEIGHT
 		maxText = if on then 20 else MAX_TEXT
 		minText = if on then 14 else MIN_TEXT
 		noteText = if on then 14 else NOTE_TEXT
 		noteMin = if on then 24 else NOTE_MIN_HEIGHT
 		if layout then
-			layout.Padding = UDim.new(0, if on then 4 else 8)
+			layout.Padding = UDim.new(0, if on then 3 else BoardCells.Gap)
 		end
 	end
 
 	-- All rows share one text size: the biggest size at which the longest row still fits on one line, but never
 	-- smaller than MIN_TEXT. A row that is still too long wraps onto a second line and its row grows to fit.
 	-- (TextScaled would give every row its own size, so a short name would look bigger than a long one.)
-	local rowButtons: { { button: TextButton, text: string, note: boolean, icon: ViewportFrame? } } = {}
+	-- `fixed` rows (table rows) keep their own height and text sizes.
+	local rowButtons: {
+		{
+			button: TextButton,
+			text: string,
+			note: boolean,
+			icon: ViewportFrame?,
+			icons: { ViewportFrame },
+			fixed: boolean,
+		}
+	} =
+		{}
 	-- The server answers a tap and also pushes the new state, which rebuilds the list: the flash must land on the
 	-- row that is there after the rebuild, whichever of the two comes first.
 	local pendingFlash: { index: number, color: Color3, expires: number }? = nil
@@ -327,7 +310,7 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 		local width = (if list.AbsoluteSize.X > 40 then list.AbsoluteSize.X else 480) - 8 - 28 - 12
 		local best = maxText
 		for _, row in rowButtons do
-			if row.note then
+			if row.note or row.fixed then
 				continue
 			end
 			local size = best
@@ -343,6 +326,9 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			best = math.min(best, size)
 		end
 		for _, row in rowButtons do
+			if row.fixed then
+				continue
+			end
 			local size = if row.note then noteText else best
 			row.button.TextScaled = false
 			row.button.TextWrapped = true
@@ -361,10 +347,10 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 		local top = list.AbsolutePosition.Y - 60
 		local bottom = list.AbsolutePosition.Y + list.AbsoluteSize.Y + 60
 		for _, row in rowButtons do
-			local icon = row.icon
-			if icon then
-				local y = row.button.AbsolutePosition.Y
-				icon.Visible = y + row.button.AbsoluteSize.Y >= top and y <= bottom
+			local y = row.button.AbsolutePosition.Y
+			local onScreen = y + row.button.AbsoluteSize.Y >= top and y <= bottom
+			for _, icon in row.icons do
+				icon.Visible = onScreen
 			end
 		end
 	end
@@ -419,61 +405,118 @@ function ListModal.create(title: string, onClose: (() -> ())?): Modal
 			titleLabel.Text = translated
 		end,
 		setRows = function(rows: { Row })
-			currentTheme = UiTheme.get() -- the time of day may have changed since the modal was created
+			restyle() -- the time of day may have changed since the modal was created
 			for _, child in list:GetChildren() do
 				if child:IsA("GuiObject") then
 					child:Destroy()
 				end
 			end
 			table.clear(rowButtons)
+			local stripe = 0 -- table rows alternate their colour, like the ranking
 			for i, row in rows do
 				local tappable = row.onTap ~= nil
+				local cells, columns = row.cells, row.columns
 				local button = make("TextButton", {
 					LayoutOrder = i,
 					Size = UDim2.new(1, -8, 0, rowHeight),
 					AutoButtonColor = tappable,
 					Active = tappable,
-					Text = Lang.t(row.text),
+					Text = if cells then "" else Lang.t(row.text),
 					TextScaled = true,
 					TextXAlignment = Enum.TextXAlignment.Left,
+					BorderSizePixel = 0,
+					Font = currentTheme.head,
+					TextColor3 = BoardCells.Text,
 				}, list) :: TextButton
-				-- The padding comes first: the glass frame behind the text is stretched to make up for it.
-				make("UIPadding", {
-					PaddingTop = UDim.new(0.22, 0),
-					PaddingBottom = UDim.new(0.22, 0),
-					PaddingLeft = UDim.new(0, if row.icon then 14 + ICON_SPACE else 14),
-					PaddingRight = UDim.new(0, 14),
-				}, button)
-				-- Rows that cannot be tapped are quiet text; tappable ones are neon / candy buttons.
-				if tappable then
-					UiTheme.styleButton(button, currentTheme, if row.selected then "Matcha" else "Sora", 12, false)
+				local icons: { ViewportFrame } = {}
+				if cells and columns then
+					-- a table row: fixed height, the cells drawn by BoardCells
+					local head = row.head == true
+					stripe = if head then 0 else stripe + 1
+					button.Size = UDim2.new(
+						1,
+						-8,
+						0,
+						if head then 26 elseif compact then COMPACT_TABLE_ROW else BoardCells.RowHeight
+					)
+					button.BackgroundColor3 = if head
+						then BoardCells.HeadRow
+						elseif row.selected then BoardCells.RowLit
+						elseif stripe % 2 == 0 then BoardCells.RowAlt
+						else BoardCells.Row
+					BoardCells.corner(button, if head then 6 else 8)
+					if row.selected and not head then
+						make("UIStroke", {
+							Name = "RowAccent",
+							Color = BoardCells.Gold,
+							Thickness = 2,
+							ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+						}, button)
+					end
+					local frames = BoardCells.columnFrames(button, columns)
+					for c, column in columns do
+						local cell = cells[c]
+						if not cell then
+							continue
+						end
+						if head then
+							BoardCells.headLabel(frames[c], Lang.t(cell.text or ""), column)
+						else
+							BoardCells.drawCell(frames[c], cell, column, row.selected == true)
+							local picture = frames[c]:FindFirstChildOfClass("ViewportFrame")
+							if picture then
+								table.insert(icons, picture)
+							end
+						end
+					end
 				else
-					button.BackgroundTransparency = 1
-					UiTheme.styleText(button, currentTheme, "body")
-				end
-				button.TextXAlignment = Enum.TextXAlignment.Left
-				if row.color and currentTheme.night then
-					button.TextColor3 = row.color
-				end
-				-- A frame in the row's colour (green = you can buy it, grey = you cannot ...), day and night.
-				if tappable and (row.color or row.selected) then
-					make("UIStroke", {
-						Name = "RowAccent",
-						Color = if row.selected then Color3.new(1, 1, 1) else row.color,
-						Thickness = if row.selected then 4 else 2.5,
-						ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+					-- The padding comes first: the frame behind the text is stretched to make up for it.
+					make("UIPadding", {
+						PaddingTop = UDim.new(0.22, 0),
+						PaddingBottom = UDim.new(0.22, 0),
+						PaddingLeft = UDim.new(0, if row.icon then 14 + ICON_SPACE else 14),
+						PaddingRight = UDim.new(0, 14),
 					}, button)
+					if tappable then
+						-- a tappable row: a board row with a coloured rim (green = you can buy it, grey = you
+						-- cannot ...); the chosen one is lit with a gold rim
+						button.BackgroundColor3 = if row.selected then BoardCells.RowLit else BoardCells.Row
+						BoardCells.corner(button, 8)
+						if row.color or row.selected then
+							make("UIStroke", {
+								Name = "RowAccent",
+								Color = if row.selected then BoardCells.Gold else BoardCells.rim(row.color :: Color3),
+								Thickness = if row.selected then 3 else 2,
+								ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+							}, button)
+						end
+					else
+						-- quiet text: a note or a line of information
+						button.BackgroundTransparency = 1
+						button.Font = currentTheme.body
+						-- a row's own colour is a hue: neon at night, made darker by day so it reads on the board
+						button.TextColor3 = if row.note
+							then BoardCells.SubText
+							elseif row.color then BoardCells.ink(row.color)
+							else BoardCells.Text
+					end
+					button.TextXAlignment = Enum.TextXAlignment.Left
 				end
 				button.InputBegan:Connect(beginDrag)
 				local icon: ViewportFrame? = nil
-				if row.icon then
+				if row.icon and not cells then
 					icon = makeIcon(row.icon, row.selected == true)
 					icon.Parent = button
+					table.insert(icons, icon :: ViewportFrame)
 				end
-				table.insert(
-					rowButtons,
-					{ button = button, text = Lang.t(row.text), note = row.note == true, icon = icon }
-				)
+				table.insert(rowButtons, {
+					button = button,
+					text = Lang.t(row.text),
+					note = row.note == true,
+					icon = icon,
+					icons = icons,
+					fixed = cells ~= nil,
+				})
 				local onTap = row.onTap
 				if onTap then
 					button.Activated:Connect(function()

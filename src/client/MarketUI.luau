@@ -12,6 +12,7 @@ local Workspace = game:GetService("Workspace")
 
 local GardenState = require(script.Parent.GardenState)
 local Lang = require(script.Parent.Lang)
+local BoardCells = require(script.Parent.BoardCells)
 local ListModal = require(script.Parent.ListModal)
 local Genres = require(ReplicatedStorage.Shared.Garden.Genres)
 local Mutations = require(ReplicatedStorage.Shared.Garden.Mutations)
@@ -44,6 +45,66 @@ local function fruitLabel(seedId: string, mutation: string?): string
 	return if mutation then `{Mutations.displayName(mutation)} {name}` else name
 end
 
+-- The odds of the egg as a few short rows (one long row would be cut off): kinds with the same odds go together,
+-- the most common first. Every kind and its percentage is always shown.
+local function oddsRows(rows: { ListModal.Row })
+	local groups: { { percent: number, names: { string } } } = {}
+	for _, o in Spirits.odds() do
+		local group = nil
+		for _, g in groups do
+			if g.percent == o.percent then
+				group = g
+			end
+		end
+		if not group then
+			group = { percent = o.percent, names = {} }
+			table.insert(groups, group)
+		end
+		table.insert(group.names, (Spirits.get(o.kind) :: Spirits.Def).name.en)
+	end
+	table.sort(groups, function(a, b)
+		return a.percent > b.percent
+	end)
+	table.insert(rows, { note = true, text = "Egg hatches into (odds):" })
+	for _, g in groups do
+		local names = table.concat(g.names, ", ")
+		table.insert(rows, {
+			note = true,
+			text = if #g.names == 1 then `{g.percent}%: {names}` else `{g.percent}% each: {names}`,
+		})
+	end
+end
+
+local SEED_COLUMNS: { BoardCells.Column } = {
+	{ title = "", width = 50 },
+	{ title = "SEED", flex = 1 },
+	{ title = "PRICE", width = 84, align = "right" },
+	{ title = "HAVE", width = 64, align = "center" },
+	{ title = "", width = 96, align = "center" },
+}
+
+local EXTRA_COLUMNS: { BoardCells.Column } = {
+	{ title = "ITEM", flex = 1 },
+	{ title = "PRICE", width = 84, align = "right" },
+	{ title = "", width = 96, align = "center" },
+}
+
+local FRUIT_COLUMNS: { BoardCells.Column } = {
+	{ title = "", width = 50 },
+	{ title = "FRUIT", flex = 1 },
+	{ title = "COUNT", width = 72, align = "center" },
+	{ title = "COINS", width = 96, align = "right" },
+}
+
+-- The head row of a table inside a list (the column names).
+local function headRow(columns: { BoardCells.Column }): ListModal.Row
+	local cells: { BoardCells.Cell } = {}
+	for _, column in columns do
+		table.insert(cells, { text = column.title })
+	end
+	return { text = "", head = true, cells = cells, columns = columns }
+end
+
 -- "  \u{2605}\u{2605}\u{2606}\u{2606}\u{2606}" for the seed's mastery; nothing until the first harvest.
 local function stars(snapshot: GardenState.Snapshot, seedId: string): string
 	local count = Progression.starsFor(snapshot.mastery[seedId] or 0)
@@ -60,35 +121,52 @@ local function shopRows(
 	buyEgg: () -> boolean,
 	purchase: (what: string) -> ()
 ): { ListModal.Row }
+	BoardCells.refresh()
 	local rows: { ListModal.Row } = {}
+	-- A table: seed | price | how many you have | Buy (green when you can pay, dim when you cannot).
 	-- The stock changes every few minutes; it is worked out from the server clock, like on the server.
+	table.insert(rows, headRow(SEED_COLUMNS))
 	for _, seedId in stockFor(snapshot) do
 		local seed = Seeds.get(seedId) :: Seeds.Seed
 		local own = snapshot.seeds[seed.seedId] or 0
 		local genre = (Genres.Names :: any)[seed.favoriteGenre]
+		local affordable = snapshot.coins >= seed.price
 		table.insert(rows, {
-			text = `{seed.name.en}  {seed.price}   ({own})   {seed.rarity}  \u{2665} {genre.en}{stars(
-				snapshot,
-				seed.seedId
-			)}`,
-			color = if snapshot.coins >= seed.price then Palette.Hues.Matcha.Night else Palette.Rarity.Common,
-			icon = { kind = "plant", id = seed.seedId },
+			text = seed.name.en,
+			columns = SEED_COLUMNS,
+			cells = {
+				{ icon = { kind = "plant", id = seed.seedId } },
+				{
+					text = seed.name.en,
+					sub = `{seed.rarity}   \u{2665} {genre.en}{stars(snapshot, seed.seedId)}`,
+					bold = true,
+					color = BoardCells.ink(Palette.Rarity[seed.rarity]),
+				},
+				{ text = `{seed.price}`, bold = true, dim = not affordable },
+				{ text = `{own}`, dim = own == 0 },
+				{ text = Lang.t("Buy"), pill = BoardCells.pill("Matcha"), dim = not affordable },
+			},
 			onTap = function()
 				return buy(seed.seedId)
 			end,
 		})
 	end
+	-- The Spirit Egg is one more row of the same table (no picture: it hatches into a surprise).
+	local eggAffordable = snapshot.coins >= Spirits.EggPrice
 	table.insert(rows, {
-		text = `Buy Spirit Egg  {Spirits.EggPrice}   (you have {snapshot.eggs})`,
-		color = if snapshot.coins >= Spirits.EggPrice then Palette.Hues.Fuji.Night else Palette.Rarity.Common,
+		text = "Spirit Egg",
+		columns = SEED_COLUMNS,
+		cells = {
+			{ text = "\u{1F95A}", color = BoardCells.Text },
+			{ text = Lang.t("Spirit Egg"), sub = Lang.t("Hatch it in Spirits"), bold = true },
+			{ text = `{Spirits.EggPrice}`, bold = true, dim = not eggAffordable },
+			{ text = `{snapshot.eggs}`, dim = snapshot.eggs == 0 },
+			{ text = Lang.t("Buy"), pill = BoardCells.pill("Fuji"), dim = not eggAffordable },
+		},
 		onTap = buyEgg,
 	})
 	-- Paid random items must show their odds.
-	local odds: { string } = {}
-	for _, o in Spirits.odds() do
-		table.insert(odds, `{(Spirits.get(o.kind) :: Spirits.Def).name.en} {o.percent}%`)
-	end
-	table.insert(rows, { note = true, text = `Egg hatches into: {table.concat(odds, ", ")}` })
+	oddsRows(rows)
 	-- Garden level: what opens next.
 	local level = snapshot.level
 	local nextSeed: Seeds.Seed? = nil
@@ -106,37 +184,62 @@ local function shopRows(
 		else "  -  every seed is open"
 	table.insert(rows, { note = true, text = Lang.t(progressText) .. Lang.t(nextText) })
 
-	-- Robux items, last and quiet: nothing here is needed to play.
+	-- Robux items, last and quiet: nothing here is needed to play. A table: item | price | Buy.
 	table.insert(rows, { note = true, text = "Extras (Robux): save time or add a little luck" })
-	local function extra(text: string, what: string)
+	table.insert(rows, headRow(EXTRA_COLUMNS))
+	local function extra(name: string, sub: string, price: string, pill: string, hue: string, what: string?)
 		table.insert(rows, {
-			text = text,
-			onTap = function()
-				purchase(what)
-			end,
+			text = name,
+			columns = EXTRA_COLUMNS,
+			cells = {
+				{ text = Lang.t(name), sub = sub, bold = true },
+				{ text = price, bold = true },
+				{ text = Lang.t(pill), pill = BoardCells.pill(hue) },
+			},
+			onTap = if what
+				then function()
+					purchase(what)
+				end
+				else nil,
 		})
 	end
-	extra(`Restock the shop for you  {Products.Prices.Restock} R$`, "Restock")
-	local sprinklerText = Lang.t(
-		`Growth Sprinkler  {Products.Prices.Sprinkler} R$  (all plants grow x{1 + Products.SprinklerGrowBonus} for {Products.SprinklerSeconds // 60} min)`
-	)
+	extra("Restock the shop for you", "", `{Products.Prices.Restock} R$`, "Buy", "Sora", "Restock")
+	local sprinklerText =
+		Lang.t(`all plants grow x{1 + Products.SprinklerGrowBonus} for {Products.SprinklerSeconds // 60} min`)
 	if snapshot.sprinklerLeft > 0 then
 		sprinklerText ..= Lang.t(
 			`  -  on: {snapshot.sprinklerLeft // 60}:{string.format("%02d", snapshot.sprinklerLeft % 60)} left`
 		)
 	end
-	extra(sprinklerText, "Sprinkler")
-	extra(
-		if snapshot.instantCredits > 0
-			then `Use Instant Grow  (you have {snapshot.instantCredits})`
-			else `Instant Grow  {Products.Prices.InstantGrow} R$  (ripens the plant you tended last)`,
-		"InstantGrow"
-	)
-	if snapshot.hasDoubleGrowth then
-		table.insert(rows, { text = "Double Growth: yours! Plants grow twice as fast" })
+	extra("Growth Sprinkler", sprinklerText, `{Products.Prices.Sprinkler} R$`, "Buy", "Sora", "Sprinkler")
+	if snapshot.instantCredits > 0 then
+		extra(
+			"Instant Grow",
+			Lang.t("ripens the plant you tended last"),
+			`x{snapshot.instantCredits}`,
+			"Use",
+			"Matcha",
+			"InstantGrow"
+		)
 	else
 		extra(
-			`Double Growth pass  {Products.Prices.DoubleGrowth} R$  (plants grow x{Products.GrowSpeedMult}, forever)`,
+			"Instant Grow",
+			Lang.t("ripens the plant you tended last"),
+			`{Products.Prices.InstantGrow} R$`,
+			"Buy",
+			"Sora",
+			"InstantGrow"
+		)
+	end
+	if snapshot.hasDoubleGrowth then
+		extra("Double Growth pass", Lang.t("Plants grow twice as fast"), "", "Yours", "Yuzu", nil)
+	else
+		extra(
+			"Double Growth pass",
+			Lang.t(`plants grow x{Products.GrowSpeedMult}, forever`),
+			`{Products.Prices.DoubleGrowth} R$`,
+			"Buy",
+			"Sora",
 			"DoubleGrowth"
 		)
 	end
@@ -144,6 +247,7 @@ local function shopRows(
 end
 
 local function sellRows(snapshot: GardenState.Snapshot, sellAll: () -> boolean): { ListModal.Row }
+	BoardCells.refresh()
 	local rows: { ListModal.Row } = {}
 	local total = 0
 	local groups: { [string]: { label: string, count: number, value: number, seedId: string, mutation: string? } } = {}
@@ -176,11 +280,22 @@ local function sellRows(snapshot: GardenState.Snapshot, sellAll: () -> boolean):
 			onTap = sellAll,
 		})
 	end
+	-- A table: fruit | how many | coins (with the spirit's sell bonus, like the Sell all total above; rounding can
+	-- make the rows add up to one coin more or less).
+	if #order > 0 then
+		table.insert(rows, headRow(FRUIT_COLUMNS))
+	end
 	for _, key in order do
 		local group = groups[key]
 		table.insert(rows, {
-			text = `{group.label} x{group.count}  ({group.value})`,
-			icon = { kind = "plant", id = group.seedId, mutation = group.mutation },
+			text = group.label,
+			columns = FRUIT_COLUMNS,
+			cells = {
+				{ icon = { kind = "plant", id = group.seedId, mutation = group.mutation } },
+				{ text = group.label, bold = true, color = if group.mutation then BoardCells.GoldText else nil },
+				{ text = `x{group.count}` },
+				{ text = `{math.round(group.value * snapshot.sellMult)}`, bold = true },
+			},
 		})
 	end
 	return rows
